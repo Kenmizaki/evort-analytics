@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>evort アナリティクス - 斉藤光学</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              200: '#ddd6fe',
+              300: '#c4b5fd',
+              400: '#a78bfa',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9',
+              800: '#5b21b6',
+              900: '#4c1d95',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Noto Sans JP', sans-serif; background: #f8f7fc; }
+    .sidebar-fixed { width: 260px; min-width: 260px; }
+    @media (max-width: 1024px) {
+      .sidebar-fixed { display: none; }
+    }
+    .loading-pulse { animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    .live-dot { animation: live-pulse 2s ease-in-out infinite; }
+    @keyframes live-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.2); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ========== API Client ==========
+    const API_BASE = '/.netlify/functions/ga4-report';
+
+    async function fetchGA4(params = {}) {
+      const queryString = new URLSearchParams(params).toString();
+      const url = `${API_BASE}?${queryString}`;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`API Error: ${response.status}`);
+        return await response.json();
+      } catch (error) {
+        console.error('API fetch error:', error);
+        throw error;
+      }
+    }
+
+    // ========== フォールバック用ダミーデータ ==========
+    const dummyMetrics = { pv: 1847, pvChange: 12.5, users: 892, usersChange: 8.3, formTransitions: 23, formTransitionsChange: 4, formTransitionRate: 1.24, formTransitionRateChange: 0.15 };
+    const dummyDailyData = Array.from({ length: 31 }, (_, i) => ({ date: `12/${i + 1}`, pv: Math.floor(Math.random() * 60) + 30, transitions: Math.floor(Math.random() * 4) }));
+    const dummyRegions = [
+      { name: 'Tokyo', pv: 423, percent: 22.9 }, { name: 'Osaka', pv: 287, percent: 15.5 }, { name: 'Aichi', pv: 198, percent: 10.7 },
+      { name: 'Kanagawa', pv: 156, percent: 8.4 }, { name: 'Fukuoka', pv: 134, percent: 7.3 }, { name: 'Hyogo', pv: 98, percent: 5.3 },
+      { name: 'Saitama', pv: 87, percent: 4.7 }, { name: 'Chiba', pv: 76, percent: 4.1 }, { name: 'Shizuoka', pv: 65, percent: 3.5 }, { name: 'Hiroshima', pv: 54, percent: 2.9 }
+    ];
+    const dummyDevices = [{ name: 'PC', value: 68, color: '#8b5cf6' }, { name: 'Mobile', value: 29, color: '#22c55e' }, { name: 'Tablet', value: 3, color: '#94a3b8' }];
+
+    // ナビゲーション構造
+    const navigation = [
+      { id: 'dashboard', label: 'ダッシュボード', icon: '📊', children: null },
+      { id: 'company', label: '企業コンテンツ', icon: '📁', children: [
+        { id: 'presentation', label: 'プレゼンテーション' }, { id: 'topic1', label: 'USBマイクロスコープ' },
+        { id: 'topic2', label: 'HDMIマイクロスコープ' }, { id: 'presenter', label: 'プレゼンター' }
+      ]},
+      { id: 'media', label: '集客用記事', icon: '📁', children: [
+        { id: 'pillar', label: '工業用マイクロスコープ' }, { id: 'cluster1', label: '検査用顕微鏡' },
+        { id: 'cluster2', label: '顕微鏡 倍率' }, { id: 'cluster3', label: 'マイクロスコープ 価格' }
+      ]},
+      { id: 'form', label: 'フォーム', icon: '📁', children: [
+        { id: 'contact', label: '問い合わせフォーム' }, { id: 'download', label: '資料DLフォーム' }
+      ]}
+    ];
+
+    // ========== コンポーネント ==========
+
+    // 指標カード
+    function MetricCard({ title, value, change, suffix = '', isPercent = false, loading = false }) {
+      const isPositive = change >= 0;
+      if (loading) return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <div className="h-4 w-16 bg-gray-200 rounded loading-pulse mb-2"></div>
+          <div className="h-8 w-24 bg-gray-200 rounded loading-pulse"></div>
+        </div>
+      );
+      return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <div className="text-gray-500 text-xs mb-1">{title}</div>
+          <div className="text-2xl font-bold text-gray-800">
+            {typeof value === 'number' ? value.toLocaleString() : value}
+            {suffix && <span className="text-base font-normal text-gray-500 ml-1">{suffix}</span>}
+          </div>
+          <div className={`text-xs mt-2 ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+            {isPositive ? '↑' : '↓'} {isPercent ? `${Math.abs(change)}%` : Math.abs(change)} 前月比
+          </div>
+        </div>
+      );
+    }
+
+    // リアルタイムバナー
+    function RealtimeBanner({ data, loading }) {
+      if (loading) return (
+        <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 mb-5 text-white">
+          <div className="flex items-center gap-2 loading-pulse">
+            <div className="w-3 h-3 bg-white rounded-full"></div>
+            <span className="text-sm">リアルタイム読み込み中...</span>
+          </div>
+        </div>
+      );
+      return (
+        <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 mb-5 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 bg-white rounded-full live-dot"></div>
+              <span className="text-sm font-medium">リアルタイム</span>
+              <span className="text-3xl font-bold">{data?.totalActiveUsers || 0}</span>
+              <span className="text-green-100">人がアクセス中</span>
+            </div>
+            {data?.companies?.length > 0 && (
+              <div className="text-sm text-green-100">
+                閲覧中: {data.companies.slice(0, 3).map(c => c.name).join(', ')}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // 推移グラフ
+    function TrendChart({ data }) {
+      const chartRef = useRef(null);
+      const chartInstance = useRef(null);
+
+      useEffect(() => {
+        if (chartInstance.current) chartInstance.current.destroy();
+        const ctx = chartRef.current.getContext('2d');
+        const pvGradient = ctx.createLinearGradient(0, 0, 0, 220);
+        pvGradient.addColorStop(0, 'rgba(99, 102, 241, 0.9)');
+        pvGradient.addColorStop(0.5, 'rgba(59, 130, 246, 0.7)');
+        pvGradient.addColorStop(1, 'rgba(34, 197, 94, 0.6)');
+
+        chartInstance.current = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: data.map(d => d.date),
+            datasets: [{
+              label: 'PV', data: data.map(d => d.pv), fill: true, backgroundColor: pvGradient,
+              borderColor: 'rgba(99, 102, 241, 0.8)', borderWidth: 2, tension: 0.4, pointRadius: 0,
+              pointHoverRadius: 6, pointHoverBackgroundColor: '#fff', pointHoverBorderColor: 'rgba(99, 102, 241, 1)',
+              pointHoverBorderWidth: 2, yAxisID: 'y', order: 2
+            }, {
+              label: 'フォーム遷移数', data: data.map(d => d.transitions), fill: false, borderColor: '#f97316',
+              backgroundColor: '#f97316', borderWidth: 2, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#fff',
+              pointBorderColor: '#f97316', pointBorderWidth: 2, pointHoverRadius: 6, yAxisID: 'y1', order: 1
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+            scales: {
+              y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'PV', font: { size: 10 }, color: '#94a3b8' }, grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 9 } }, beginAtZero: true },
+              y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'フォーム遷移数', font: { size: 10 }, color: '#94a3b8' }, grid: { drawOnChartArea: false }, min: 0, max: 6, ticks: { color: '#94a3b8', font: { size: 9 } } },
+              x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 8 }, maxRotation: 0 } }
+            },
+            plugins: {
+              legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, padding: 15 } },
+              tooltip: { backgroundColor: 'rgba(255, 255, 255, 0.95)', titleColor: '#374151', bodyColor: '#374151', borderColor: '#e5e7eb', borderWidth: 1, cornerRadius: 8, padding: 12 }
+            }
+          }
+        });
+        return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+      }, [data]);
+
+      return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="text-sm font-medium text-gray-700 mb-4">推移</h3>
+          <div style={{ height: '220px' }}><canvas ref={chartRef}></canvas></div>
+        </div>
+      );
+    }
+
+    // 地域分布
+    function RegionDistribution({ data, loading }) {
+      if (loading) return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
+          <h3 className="text-sm font-medium text-gray-700 mb-4">地域分布（上位10）</h3>
+          <div className="space-y-2">{Array(10).fill(0).map((_, i) => <div key={i} className="h-4 bg-gray-200 rounded loading-pulse"></div>)}</div>
+        </div>
+      );
+      return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
+          <h3 className="text-sm font-medium text-gray-700 mb-4">地域分布（上位10）</h3>
+          <div className="space-y-2">
+            {data.map((region, index) => (
+              <div key={region.name} className="flex items-center justify-between text-xs">
+                <div className="flex items-center"><span className="text-gray-400 w-5">{index + 1}.</span><span className="text-gray-700">{region.name}</span></div>
+                <div className="flex items-center gap-3"><span className="text-gray-600">{region.pv}</span><span className="text-gray-400 w-10 text-right">{region.percent}%</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // デバイスチャート
+    function DeviceChart({ data }) {
+      const chartRef = useRef(null);
+      const chartInstance = useRef(null);
+
+      useEffect(() => {
+        if (chartInstance.current) chartInstance.current.destroy();
+        const ctx = chartRef.current.getContext('2d');
+        chartInstance.current = new Chart(ctx, {
+          type: 'doughnut',
+          data: { labels: data.map(d => d.name), datasets: [{ data: data.map(d => d.value), backgroundColor: data.map(d => d.color), borderWidth: 0 }] },
+          options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { display: false } } }
+        });
+        return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+      }, [data]);
+
+      return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
+          <h3 className="text-sm font-medium text-gray-700 mb-4">デバイス</h3>
+          <div className="flex items-center gap-6">
+            <div style={{ width: '100px', height: '100px' }}><canvas ref={chartRef}></canvas></div>
+            <div className="flex-1 space-y-2">
+              {data.map((item, i) => (
+                <div key={i} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div><span className="text-gray-700">{item.name}</span></div>
+                  <span className="text-gray-600 font-medium">{item.value}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 来場組織リスト（実データ対応）
+    function OrganizationList({ companies, loading }) {
+      const [activeTab, setActiveTab] = useState('timeline');
+      const [sortConfig, setSortConfig] = useState({ key: 'sessions', direction: 'desc' });
+      const [searchTerm, setSearchTerm] = useState('');
+      const [industryFilter, setIndustryFilter] = useState('');
+
+      const handleSort = (key) => {
+        setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
+      };
+
+      const getSortIcon = (key) => {
+        if (sortConfig.key !== key) return '↕';
+        return sortConfig.direction === 'asc' ? '↑' : '↓';
+      };
+
+      const sortedData = [...companies].sort((a, b) => {
+        const aVal = a[sortConfig.key];
+        const bVal = b[sortConfig.key];
+        const modifier = sortConfig.direction === 'asc' ? 1 : -1;
+        if (typeof aVal === 'number') return (aVal - bVal) * modifier;
+        return String(aVal || '').localeCompare(String(bVal || '')) * modifier;
+      }).filter(c => {
+        const matchSearch = !searchTerm || c.name?.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchIndustry = !industryFilter || c.industry === industryFilter;
+        return matchSearch && matchIndustry;
+      });
+
+      const industries = [...new Set(companies.map(c => c.industry).filter(Boolean))];
+
+      const columns = [
+        { key: 'name', label: '組織名' }, { key: 'prefecture', label: '都道府県' }, { key: 'employees', label: '従業員数' },
+        { key: 'industry', label: '業種' }, { key: 'sessions', label: 'セッション' }, { key: 'pageViews', label: 'PV' }
+      ];
+
+      if (loading) return (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-10">
+          <div className="text-center text-gray-400 loading-pulse">企業データを読み込み中...</div>
+        </div>
+      );
+
+      return (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          <div className="p-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+            <div className="flex gap-2">
+              <input type="text" placeholder="企業名で検索..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                className="px-3 py-1.5 text-xs border rounded-lg w-48" />
+              <select value={industryFilter} onChange={e => setIndustryFilter(e.target.value)} className="px-3 py-1.5 text-xs border rounded-lg">
+                <option value="">すべての業種</option>
+                {industries.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+              </select>
+            </div>
+            <div className="text-xs text-gray-500">{sortedData.length} 件の企業</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-primary-600 text-white">
+                  {columns.map(col => (
+                    <th key={col.key} className="px-3 py-2 text-left font-medium cursor-pointer hover:bg-primary-700 whitespace-nowrap" onClick={() => handleSort(col.key)}>
+                      {col.label} <span className="text-primary-300 ml-1">{getSortIcon(col.key)}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedData.length === 0 ? (
+                  <tr><td colSpan={columns.length} className="px-3 py-8 text-center text-gray-400">該当する企業がありません</td></tr>
+                ) : sortedData.slice(0, 50).map((row, index) => (
+                  <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-primary-50`}>
+                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap font-medium">{row.name || '不明'}</td>
+                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{row.prefecture || '-'}</td>
+                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{row.employees || '-'}</td>
+                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{row.industry || '-'}</td>
+                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap text-right font-medium">{row.sessions?.toLocaleString() || 0}</td>
+                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap text-right">{row.pageViews?.toLocaleString() || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // 左カラム（サイドバー）
+    function Sidebar({ activeItem, onSelectItem }) {
+      const [expandedItems, setExpandedItems] = useState(['company', 'media', 'form']);
+      const toggleExpand = (id) => setExpandedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+
+      return (
+        <div className="sidebar-fixed bg-white border-r border-gray-200 h-screen overflow-y-auto flex-shrink-0">
+          <div className="p-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center"><span className="text-white font-bold">S</span></div>
+              <div><h1 className="text-sm font-bold text-gray-800">斉藤光学株式会社</h1><p className="text-xs text-gray-500">マイクロスコープ</p></div>
+            </div>
+          </div>
+          <nav className="p-3">
+            {navigation.map(item => (
+              <div key={item.id} className="mb-1">
+                <button className={`w-full flex items-center px-3 py-2 rounded-lg text-left text-sm ${activeItem === item.id ? 'bg-primary-50 text-primary-600' : 'text-gray-700 hover:bg-gray-50'}`}
+                  onClick={() => { if (item.children) toggleExpand(item.id); onSelectItem(item.id); }}>
+                  <span className="mr-2">{item.icon}</span><span className="flex-1 font-medium">{item.label}</span>
+                  {item.children && <span className="text-gray-400 text-xs">{expandedItems.includes(item.id) ? '▼' : '▶'}</span>}
+                </button>
+                {item.children && expandedItems.includes(item.id) && (
+                  <div className="ml-7 mt-1 space-y-1">
+                    {item.children.map(child => (
+                      <button key={child.id} className={`w-full px-3 py-1.5 rounded text-left text-xs ${activeItem === child.id ? 'bg-primary-50 text-primary-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                        onClick={() => onSelectItem(child.id)}>{child.label}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </nav>
+        </div>
+      );
+    }
+
+    // 期間選択
+    function DateRangePicker({ dateRange, onDateRangeChange }) {
+      const quickOptions = [
+        { label: '7日', value: '7daysAgo' }, { label: '30日', value: '30daysAgo' },
+        { label: '90日', value: '90daysAgo' }, { label: '12ヶ月', value: '365daysAgo' }
+      ];
+
+      return (
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1">
+            {quickOptions.map(opt => (
+              <button key={opt.value}
+                className={`px-3 py-1.5 text-xs rounded shadow-sm border ${dateRange === opt.value ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                onClick={() => onDateRangeChange(opt.value)}>{opt.label}</button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // メインコンテンツ
+    function MainContent({ activeItem, dateRange }) {
+      const [metrics, setMetrics] = useState(null);
+      const [companies, setCompanies] = useState([]);
+      const [realtime, setRealtime] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      const loadData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const [overviewRes, companiesRes, realtimeRes] = await Promise.all([
+            fetchGA4({ type: 'overview', startDate: dateRange, endDate: 'today' }),
+            fetchGA4({ type: 'companies', startDate: dateRange, endDate: 'today' }),
+            fetchGA4({ type: 'realtime' })
+          ]);
+          setMetrics(overviewRes.data);
+          setCompanies(companiesRes.data || []);
+          setRealtime(realtimeRes.data);
+        } catch (err) {
+          console.error('Data load error:', err);
+          setError('データの取得に失敗しました。モックデータを表示します。');
+          setMetrics(dummyMetrics);
+          setCompanies([]);
+        } finally {
+          setLoading(false);
+        }
+      }, [dateRange]);
+
+      useEffect(() => { loadData(); }, [loadData]);
+
+      // リアルタイム更新
+      useEffect(() => {
+        const interval = setInterval(async () => {
+          try {
+            const res = await fetchGA4({ type: 'realtime' });
+            setRealtime(res.data);
+          } catch (err) { /* ignore */ }
+        }, 30000);
+        return () => clearInterval(interval);
+      }, []);
+
+      const getTitle = () => {
+        if (activeItem === 'dashboard') return 'ダッシュボード';
+        for (const nav of navigation) {
+          if (nav.id === activeItem) return nav.label;
+          if (nav.children) {
+            const child = nav.children.find(c => c.id === activeItem);
+            if (child) return child.label;
+          }
+        }
+        return '';
+      };
+
+      // 地域データ集計
+      const regionData = companies.reduce((acc, c) => {
+        if (c.prefecture) acc[c.prefecture] = (acc[c.prefecture] || 0) + c.sessions;
+        return acc;
+      }, {});
+      const totalSessions = Object.values(regionData).reduce((a, b) => a + b, 0) || 1;
+      const regions = Object.entries(regionData)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([name, pv]) => ({ name, pv, percent: ((pv / totalSessions) * 100).toFixed(1) }));
+
+      return (
+        <div className="flex-1 p-5 overflow-y-auto">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-xl font-bold text-gray-800">{getTitle()}</h2>
+            {error && <div className="text-xs text-orange-600 bg-orange-50 px-3 py-1 rounded">{error}</div>}
+          </div>
+
+          {/* リアルタイムバナー */}
+          <RealtimeBanner data={realtime} loading={loading} />
+
+          {/* 主要指標カード */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+            <MetricCard title="PV" value={metrics?.pageViews || 0} change={12.5} isPercent={true} loading={loading} />
+            <MetricCard title="ユーザー数" value={metrics?.activeUsers || 0} change={8.3} isPercent={true} loading={loading} />
+            <MetricCard title="セッション数" value={metrics?.sessions || 0} change={10.2} isPercent={true} loading={loading} />
+            <MetricCard title="平均滞在時間" value={metrics?.avgSessionDuration ? Math.floor(metrics.avgSessionDuration / 60) + '分' + Math.floor(metrics.avgSessionDuration % 60) + '秒' : '-'} change={5.1} isPercent={true} loading={loading} />
+          </div>
+
+          {/* 推移グラフ */}
+          <div className="mb-5"><TrendChart data={dummyDailyData} /></div>
+
+          {/* 地域分布 + デバイス */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+            <RegionDistribution data={regions.length > 0 ? regions : dummyRegions} loading={loading} />
+            <DeviceChart data={dummyDevices} />
+          </div>
+
+          {/* 来場組織リスト */}
+          <div className="mb-5">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">来場組織（どこどこJP連携）</h3>
+            <OrganizationList companies={companies} loading={loading} />
+          </div>
+        </div>
+      );
+    }
+
+    // App
+    function App() {
+      const [activeItem, setActiveItem] = useState('dashboard');
+      const [dateRange, setDateRange] = useState('30daysAgo');
+
+      return (
+        <div className="flex min-h-screen">
+          <Sidebar activeItem={activeItem} onSelectItem={setActiveItem} />
+          <div className="flex-1 flex flex-col min-w-0">
+            <header className="bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
+              <div className="text-gray-600 text-sm font-medium">evort アナリティクス <span className="text-xs text-green-600 ml-2">● LIVE</span></div>
+              <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
+            </header>
+            <MainContent activeItem={activeItem} dateRange={dateRange} />
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
