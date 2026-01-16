@@ -64,6 +64,9 @@ exports.handler = async (event) => {
       case 'companies-by-url':
         response = await getCompaniesByUrlReport(startDate, endDate, urlFilter);
         break;
+      case 'subpages':
+        response = await getSubpagesReport(startDate, endDate, urlFilter);
+        break;
       default:
         response = await getOverviewReport(startDate, endDate);
     }
@@ -383,6 +386,51 @@ async function getCompaniesByUrlReport(startDate, endDate, urlPath) {
     data: {
       urlPath,
       companies,
+    },
+  };
+}
+
+// 子ページ一覧取得（指定URLパス配下のページをタイトル付きで取得）
+async function getSubpagesReport(startDate, endDate, parentPath) {
+  if (!parentPath) {
+    return { type: 'subpages', error: 'Parent path required' };
+  }
+
+  const [response] = await analyticsDataClient.runReport({
+    property: `properties/${PROPERTY_ID}`,
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [
+      { name: 'pagePath' },
+      { name: 'pageTitle' },
+    ],
+    metrics: [
+      { name: 'screenPageViews' },
+      { name: 'sessions' },
+      { name: 'activeUsers' },
+    ],
+    dimensionFilter: {
+      filter: {
+        fieldName: 'pagePath',
+        stringFilter: { value: parentPath, matchType: 'BEGINS_WITH' },
+      },
+    },
+    orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
+    limit: 100,
+  });
+
+  const pages = (response.rows || []).map((row) => ({
+    path: row.dimensionValues[0]?.value || '',
+    title: row.dimensionValues[1]?.value || '',
+    pageViews: parseInt(row.metricValues[0]?.value || 0),
+    sessions: parseInt(row.metricValues[1]?.value || 0),
+    activeUsers: parseInt(row.metricValues[2]?.value || 0),
+  }));
+
+  return {
+    type: 'subpages',
+    data: {
+      parentPath,
+      pages,
     },
   };
 }
