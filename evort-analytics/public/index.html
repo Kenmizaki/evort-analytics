@@ -618,9 +618,10 @@
       const [activeItem, setActiveItem] = useState('dashboard');
       const [dateRange, setDateRange] = useState('30daysAgo');
       const [allCompaniesData, setAllCompaniesData] = useState([]); // 各URLごとの企業データ
+      const [subpagesData, setSubpagesData] = useState({}); // 各親URLの子ページデータ
       const [metrics, setMetrics] = useState(null);
-      const [realtime, setRealtime] = useState(null);
       const [loading, setLoading] = useState(true);
+      const [expandedUrls, setExpandedUrls] = useState({}); // 展開状態
 
       const urlCategories = project.urlCategories || {};
       const orgExclusions = project.orgExclusions || [];
@@ -650,12 +651,33 @@
         if (['company-content', 'media-content', 'form-content'].includes(activeItem)) {
           return { type: 'category', categoryId: activeItem, urlId: null };
         }
-        // 個別URLが選択されている場合
+        // 子ページが選択されている場合（subpage-親ID-パス）
+        if (activeItem.startsWith('subpage-')) {
+          const parts = activeItem.split('-');
+          const parentId = parseInt(parts[1]);
+          const subpagePath = decodeURIComponent(parts.slice(2).join('-'));
+          // 親URLを探す
+          for (const catId of Object.keys(urlCategories)) {
+            const parentItem = urlCategories[catId]?.find(u => u.id === parentId);
+            if (parentItem) {
+              const subpage = subpagesData[parentItem.url]?.find(p => p.path === subpagePath);
+              return {
+                type: 'subpage',
+                categoryId: catId,
+                parentId,
+                parentUrl: parentItem.url,
+                url: subpagePath,
+                title: subpage?.title || subpagePath
+              };
+            }
+          }
+        }
+        // 親URLが選択されている場合
         if (activeItem.startsWith('url-')) {
           const urlId = parseInt(activeItem.replace('url-', ''));
           for (const catId of Object.keys(urlCategories)) {
             const urlItem = urlCategories[catId]?.find(u => u.id === urlId);
-            if (urlItem) return { type: 'url', categoryId: catId, urlId, url: urlItem.url };
+            if (urlItem) return { type: 'url', categoryId: catId, urlId, url: urlItem.url, title: urlItem.title };
           }
         }
         return { type: 'all', categoryId: null, urlId: null };
@@ -672,25 +694,43 @@
           if (targetUrls.length === 0) {
             setMetrics({ pageViews: 0, activeUsers: 0, sessions: 0, avgSessionDuration: 0 });
             setAllCompaniesData([]);
-            setRealtime({ totalActiveUsers: 0 });
+            setSubpagesData({});
             setLoading(false);
             return;
           }
 
-          // 各URLごとに企業データを取得
+          // 各URLごとに企業データと子ページデータを取得
           const urlPromises = targetUrls.map(urlItem =>
             fetchGA4({ type: 'companies', startDate: dateRange, endDate: 'today', url: urlItem.url })
               .then(res => ({ urlItem, companies: res.data || [] }))
               .catch(() => ({ urlItem, companies: [] }))
           );
 
-          const [realtimeRes, ...urlResults] = await Promise.all([
-            fetchGA4({ type: 'realtime' }),
-            ...urlPromises
+          // 子ページデータを取得（前方一致で配下のページを全取得）
+          const subpagePromises = targetUrls.map(urlItem =>
+            fetchGA4({ type: 'subpages', startDate: dateRange, endDate: 'today', url: urlItem.url })
+              .then(res => ({ parentUrl: urlItem.url, pages: res.data?.pages || [] }))
+              .catch(() => ({ parentUrl: urlItem.url, pages: [] }))
+          );
+
+          const allResults = await Promise.all([
+            ...urlPromises,
+            ...subpagePromises
           ]);
 
+          // 企業データと子ページデータを分離
+          const urlResults = allResults.slice(0, targetUrls.length);
+          const subpageResults = allResults.slice(targetUrls.length);
+
           setAllCompaniesData(urlResults);
-          setRealtime(realtimeRes.data);
+
+          // 子ページデータをオブジェクトに変換
+          const subpagesObj = {};
+          subpageResults.forEach(({ parentUrl, pages }) => {
+            // 親URL自身を除外し、子ページのみを保持
+            subpagesObj[parentUrl] = pages.filter(p => p.path !== parentUrl && p.path.startsWith(parentUrl));
+          });
+          setSubpagesData(subpagesObj);
 
           // 全URL合計の指標を計算（重複企業を考慮）
           const companyMap = new Map();
@@ -723,6 +763,7 @@
           console.error('Data load error:', err);
           setMetrics({ pageViews: 0, activeUsers: 0, sessions: 0, avgSessionDuration: 0 });
           setAllCompaniesData([]);
+          setSubpagesData({});
         } finally {
           setLoading(false);
         }
@@ -741,8 +782,12 @@
           // カテゴリ全体：そのカテゴリに属するURL全ての合算
           relevantResults = allCompaniesData.filter(r => r.urlItem.category === activeFilter.categoryId);
         } else if (activeFilter.type === 'url') {
-          // 個別URL：そのURLのみ
+          // 親URL：そのURL配下全体
           relevantResults = allCompaniesData.filter(r => r.urlItem.url === activeFilter.url);
+        } else if (activeFilter.type === 'subpage') {
+          // 子ページ：親URLのデータから、特定パスのみをフィルタ
+          // （注：現状のAPIでは子ページ単体の企業データは取得していないため、親URLで代用）
+          relevantResults = allCompaniesData.filter(r => r.urlItem.url === activeFilter.parentUrl);
         }
         // type === 'all' の場合は全URL（ダッシュボード）
 
@@ -768,8 +813,8 @@
         if (activeFilter.type === 'category') {
           return targetUrls.filter(u => u.category === activeFilter.categoryId);
         }
-        if (activeFilter.type === 'url') {
-          return targetUrls.filter(u => u.url === activeFilter.url);
+        if (activeFilter.type === 'url' || activeFilter.type === 'subpage') {
+          return targetUrls.filter(u => u.url === (activeFilter.parentUrl || activeFilter.url));
         }
         return targetUrls;
       };
@@ -813,13 +858,27 @@
           return cat?.label || '';
         }
         if (activeFilter.type === 'url') {
-          const urlId = activeFilter.urlId;
-          for (const catId of Object.keys(urlCategories)) {
-            const urlItem = urlCategories[catId]?.find(u => u.id === urlId);
-            if (urlItem) return urlItem.title;
-          }
+          return activeFilter.title || '';
+        }
+        if (activeFilter.type === 'subpage') {
+          // サブページはGA4から取得したフルタイトルを表示
+          return activeFilter.title || '';
         }
         return '';
+      };
+
+      // 現在のURL（リンク用）
+      const getCurrentUrl = () => {
+        if (activeFilter.type === 'url' || activeFilter.type === 'subpage') {
+          return activeFilter.url;
+        }
+        return null;
+      };
+
+      // URLパスの末尾を取得（サイドバー表示用）
+      const getPathEnd = (path) => {
+        const parts = path.split('/').filter(p => p);
+        return parts[parts.length - 1] || path;
       };
 
       const dateOptions = [
@@ -878,16 +937,56 @@
                       <span className="font-medium">{category.label}</span>
                       {hasUrls && <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded-full">{urls.length}</span>}
                     </button>
-                    {/* 個別URL */}
+                    {/* 親URL + 子ページ */}
                     {hasUrls && (
-                      <div className="ml-7 space-y-1 mt-1">
-                        {urls.map(item => (
-                          <button key={item.id}
-                            className={`w-full px-3 py-1.5 rounded text-left text-xs ${activeItem === `url-${item.id}` ? 'bg-primary-100 text-primary-700 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
-                            onClick={() => setActiveItem(`url-${item.id}`)}>
-                            {item.title}
-                          </button>
-                        ))}
+                      <div className="ml-4 space-y-0.5 mt-1">
+                        {urls.map(item => {
+                          const subpages = subpagesData[item.url] || [];
+                          const isExpanded = expandedUrls[item.id];
+                          const isParentActive = activeItem === `url-${item.id}`;
+                          return (
+                            <div key={item.id}>
+                              {/* 親URL */}
+                              <div className="flex items-center">
+                                {subpages.length > 0 && (
+                                  <button
+                                    className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-600"
+                                    onClick={() => setExpandedUrls(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                  >
+                                    {isExpanded ? '▼' : '▶'}
+                                  </button>
+                                )}
+                                {subpages.length === 0 && <span className="w-5" />}
+                                <button
+                                  className={`flex-1 px-2 py-1.5 rounded text-left text-xs ${isParentActive ? 'bg-primary-100 text-primary-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                                  onClick={() => setActiveItem(`url-${item.id}`)}
+                                >
+                                  {item.title}
+                                  {subpages.length > 0 && <span className="text-gray-400 ml-1">({subpages.length})</span>}
+                                </button>
+                              </div>
+                              {/* 子ページ（展開時） */}
+                              {isExpanded && subpages.length > 0 && (
+                                <div className="ml-5 space-y-0.5 mt-0.5 border-l border-gray-200 pl-2">
+                                  {subpages.map((subpage, idx) => {
+                                    const subpageKey = `subpage-${item.id}-${encodeURIComponent(subpage.path)}`;
+                                    const isSubpageActive = activeItem === subpageKey;
+                                    return (
+                                      <button
+                                        key={idx}
+                                        className={`w-full px-2 py-1 rounded text-left text-xs truncate ${isSubpageActive ? 'bg-primary-100 text-primary-700 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
+                                        onClick={() => setActiveItem(subpageKey)}
+                                        title={subpage.title}
+                                      >
+                                        {getPathEnd(subpage.path)}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -901,7 +1000,6 @@
             <header className="bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
               <div className="text-gray-600 text-sm font-medium">
                 evort Analytics
-                <span className="text-xs text-green-600 ml-2">● LIVE</span>
               </div>
               <div className="flex gap-1">
                 {dateOptions.map(opt => (
@@ -916,7 +1014,20 @@
               <div className="flex items-center justify-between mb-5">
                 <div>
                   <h2 className="text-xl font-bold text-gray-800">{getTitle()}</h2>
-                  {activeFilter.type === 'url' && <p className="text-sm text-gray-500">URL: <code className="bg-gray-100 px-2 py-0.5 rounded">{activeFilter.url}</code></p>}
+                  {(activeFilter.type === 'url' || activeFilter.type === 'subpage') && (
+                    <p className="text-sm text-gray-500">
+                      URL:{' '}
+                      <a
+                        href={`https://evort.jp${activeFilter.url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary-600 hover:underline"
+                      >
+                        <code className="bg-gray-100 px-2 py-0.5 rounded">{activeFilter.url}</code>
+                        <span className="ml-1">↗</span>
+                      </a>
+                    </p>
+                  )}
                   {activeFilter.type === 'category' && <p className="text-sm text-gray-500">カテゴリ内の全URL合算</p>}
                 </div>
               </div>
@@ -932,8 +1043,6 @@
                 </div>
               ) : (
                 <>
-                  <RealtimeBanner data={realtime} loading={loading} />
-
                   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
                     <p className="text-sm text-blue-700">
                       <span className="font-medium">📊 計測対象:</span> {filteredTargetUrls.length}件のURL
