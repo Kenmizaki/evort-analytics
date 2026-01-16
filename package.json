@@ -1,8 +1,0 @@
-{
-  "name": "evort-analytics",
-  "version": "1.0.0",
-  "description": "GA4 Analytics with DokoDoko JP integration",
-  "dependencies": {
-    "@google-analytics/data": "^4.1.0"
-  }
-}
