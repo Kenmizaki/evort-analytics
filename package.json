@@ -1,0 +1,7 @@
+{
+    "name": "evort-analytics",
+    "version": "1.0.0",
+    "dependencies": {
+          "@google-analytics/data": "^4.0.0"
+    }
+}
