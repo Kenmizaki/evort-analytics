@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>evort Analytics</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#f5f3ff', 100: '#ede9fe', 200: '#ddd6fe', 300: '#c4b5fd', 400: '#a78bfa',
+              500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9', 800: '#5b21b6', 900: '#4c1d95',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Noto Sans JP', sans-serif; background: #f8f7fc; }
+    .sidebar-fixed { width: 280px; min-width: 280px; }
+    @media (max-width: 1024px) { .sidebar-fixed { display: none; } }
+    .loading-pulse { animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    .live-dot { animation: live-pulse 2s ease-in-out infinite; }
+    @keyframes live-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.2); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ========== API Client ==========
+    const API_BASE = '/api/ga4-report';
+
+    async function fetchGA4(params = {}) {
+      const queryString = new URLSearchParams(params).toString();
+      const url = API_BASE + '?' + queryString;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('API Error');
+      return response.json();
+}
+
+    // ========== Main App ==========
+    function App() {
+      const [dateRange, setDateRange] = useState({ startDate: '30daysAgo', endDate: 'today' });
+      const [overview, setOverview] = useState(null);
+      const [dailyTrend, setDailyTrend] = useState(null);
+      const [regions, setRegions] = useState(null);
+      const [devices, setDevices] = useState(null);
+      const [companies, setCompanies] = useState(null);
+      const [realtimeUsers, setRealtimeUsers] = useState(0);
+      const [loading, setLoading] = useState(true);
+      const [activeTab, setActiveTab] = useState('overview');
+      const [urlFilter, setUrlFilter] = useState('');
+      const [urlMatchType, setUrlMatchType] = useState('contains');
+
+      const loadData = useCallback(async () => {
+        setLoading(true);
+        try {
+          const params = { ...dateRange };
+          if (urlFilter) {
+            params.url = urlFilter;
+            params.urlMatchType = urlMatchType;
+          }
+
+          const [overviewData, trendData, regionsData, devicesData, companiesData, realtimeData] = await Promise.all([
+            fetchGA4({ type: urlFilter ? 'overview-by-url' : 'overview', ...params }),
+            fetchGA4({ type: 'daily-trend', ...params }),
+            fetchGA4({ type: 'regions', ...params }),
+            fetchGA4({ type: 'devices', ...params }),
+            fetchGA4({ type: 'companies', ...params }),
+            fetchGA4({ type: 'realtime' }),
+          ]);
+
+          setOverview(overviewData.data);
+          setDailyTrend(trendData.data);
+          setRegions(regionsData.data);
+          setDevices(devicesData.data);
+          setCompanies(companiesData.data);
+          setRealtimeUsers(realtimeData.data?.totalActiveUsers || 0);
+        } catch (error) {
+          console.error('Failed to load data:', error);
+        }
+        setLoading(false);
+      }, [dateRange, urlFilter, urlMatchType]);
+
+      useEffect(() => {
+        loadData();
+        const interval = setInterval(() => {
+          fetchGA4({ type: 'realtime' }).then(data => {
+            setRealtimeUsers(data.data?.totalActiveUsers || 0);
+          }).catch(() => {});
+        }, 30000);
+        return () => clearInterval(interval);
+      }, [loadData]);
+
+      return (
+        <div className="flex min-h-screen">
+          <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} realtimeUsers={realtimeUsers} />
+          <main className="flex-1 p-6 ml-0 lg:ml-[280px]">
+            <Header
+              dateRange={dateRange}
+              setDateRange={setDateRange}
+              urlFilter={urlFilter}
+              setUrlFilter={setUrlFilter}
+              urlMatchType={urlMatchType}
+              setUrlMatchType={setUrlMatchType}
+              onApply={loadData}
+            />
+
+            {activeTab === 'overview' && (
+              <div className="space-y-6">
+                <OverviewCards data={overview} loading={loading} />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <TrendChart data={dailyTrend} loading={loading} />
+                  <RegionDistribution data={regions} loading={loading} />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <DeviceChart data={devices} loading={loading} />
+                  <TopCompanies data={companies} loading={loading} />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'companies' && (
+              <CompaniesTable data={companies} loading={loading} />
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // ========== Sidebar ==========
+    function Sidebar({ activeTab, setActiveTab, realtimeUsers }) {
+      return (
+        <aside className="sidebar-fixed fixed left-0 top-0 h-screen bg-white border-r border-gray-200 p-6 flex flex-col">
+          <div className="mb-8">
+            <h1 className="text-xl font-bold text-primary-600">evort Analytics</h1>
+            <p className="text-xs text-gray-500 mt-1">GA4 Dashboard</p>
+          </div>
+
+          <div className="bg-primary-50 rounded-lg p-4 mb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2 h-2 bg-green-500 rounded-full live-dot"></span>
+              <span className="text-sm font-medium text-gray-700">リアルタイム</span>
+            </div>
+            <p className="text-3xl font-bold text-primary-600">{realtimeUsers}</p>
+            <p className="text-xs text-gray-500">アクティブユーザー</p>
+          </div>
+
+          <nav className="space-y-2 flex-1">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={'w-full text-left px-4 py-3 rounded-lg transition ' +
+                (activeTab === 'overview' ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-100 text-gray-600')
+              }
+            >
+              概要
+            </button>
+            <button
+              onClick={() => setActiveTab('companies')}
+              className={'w-full text-left px-4 py-3 rounded-lg transition ' +
+                (activeTab === 'companies' ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-100 text-gray-600')
+              }
+            >
+              企業一覧
+            </button>
+          </nav>
+
+          <div className="text-xs text-gray-400 mt-4">
+            Powered by GA4 API
+          </div>
+        </aside>
+      );
+    }
+
+    // ========== Header ==========
+    function Header({ dateRange, setDateRange, urlFilter, setUrlFilter, urlMatchType, setUrlMatchType, onApply }) {
+      const [tempUrl, setTempUrl] = useState(urlFilter);
+
+      const handleApply = () => {
+        setUrlFilter(tempUrl);
+        onApply();
+      };
+
+      return (
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-6">
+          <div className="flex flex-wrap items-center gap-4">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">期間</label>
+              <select
+                value={dateRange.startDate + '_' + dateRange.endDate}
+                onChange={(e) => {
+                  const [start, end] = e.target.value.split('_');
+                  setDateRange({ startDate: start, endDate: end });
+                }}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="7daysAgo_today">過去7日</option>
+                <option value="30daysAgo_today">過去30日</option>
+                <option value="90daysAgo_today">過去90日</option>
+              </select>
+            </div>
+
+            <div className="flex-1 min-w-[200px]">
+              <label className="text-xs text-gray-500 block mb-1">URLフィルター</label>
+              <div className="flex gap-2">
+                <select
+                  value={urlMatchType}
+                  onChange={(e) => setUrlMatchType(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-2 py-2 text-sm"
+                >
+                  <option value="contains">含む</option>
+                  <option value="prefix">前方一致</option>
+                  <option value="exact">完全一致</option>
+                </select>
+                <input
+                  type="text"
+                  value={tempUrl}
+                  onChange={(e) => setTempUrl(e.target.value)}
+                  placeholder="/products/"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleApply}
+              className="bg-primary-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition mt-5"
+            >
+              適用
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ========== Overview Cards ==========
+    function OverviewCards({ data, loading }) {
+      if (loading || !data) {
+        return (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <div className="h-4 bg-gray-200 rounded w-20 mb-3 loading-pulse"></div>
+                <div className="h-8 bg-gray-200 rounded w-16 loading-pulse"></div>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      const cards = [
+        { label: 'ユーザー', value: data.activeUsers?.toLocaleString() || '0', color: 'text-blue-600' },
+        { label: 'セッション', value: data.sessions?.toLocaleString() || '0', color: 'text-green-600' },
+        { label: 'PV', value: data.pageViews?.toLocaleString() || '0', color: 'text-purple-600' },
+        { label: '平均滞在時間', value: formatDuration(data.avgSessionDuration || 0), color: 'text-orange-600' },
+      ];
+
+      return (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {cards.map((card, i) => (
+            <div key={i} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+              <p className="text-sm text-gray-500 mb-1">{card.label}</p>
+              <p className={'text-2xl font-bold ' + card.color}>{card.value}</p>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // ========== Trend Chart ==========
+    function TrendChart({ data, loading }) {
+      const chartRef = useRef(null);
+      const chartInstance = useRef(null);
+
+      useEffect(() => {
+        if (!data || !chartRef.current) return;
+        if (chartInstance.current) chartInstance.current.destroy();
+
+        const ctx = chartRef.current.getContext('2d');
+        chartInstance.current = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: data.map(d => d.date),
+            datasets: [
+              { label: 'PV', data: data.map(d => d.pv), borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.1)', fill: true, tension: 0.3 },
+              { label: 'セッション', data: data.map(d => d.sessions), borderColor: '#22c55e', backgroundColor: 'transparent', tension: 0.3 },
+            ],
+          },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } },
+        });
+
+        return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+      }, [data]);
+
+      if (loading) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">推移</h3>
+            <div style={{ height: '220px' }} className="flex items-center justify-center">
+              <span className="text-gray-400 loading-pulse">読み込み中...</span>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="text-sm font-medium text-gray-700 mb-4">推移（GA4データ）</h3>
+          <div style={{ height: '220px' }}><canvas ref={chartRef}></canvas></div>
+        </div>
+      );
+    }
+
+    // ========== Region Distribution ==========
+    function RegionDistribution({ data, loading }) {
+      if (loading) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">アクセス元地域（GA4）</h3>
+            <div className="space-y-2">
+              {[...Array(5)].map((_, i) => <div key={i} className="h-4 bg-gray-200 rounded loading-pulse"></div>)}
+            </div>
+          </div>
+        );
+      }
+
+      if (!data || data.length === 0) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">アクセス元地域（GA4）</h3>
+            <p className="text-xs text-gray-400">データがありません</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
+          <h3 className="text-sm font-medium text-gray-700 mb-4">アクセス元地域（GA4）</h3>
+          <div className="space-y-3">
+            {data.slice(0, 8).map((region, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <span className="text-sm text-gray-600 w-24 truncate">{region.name}</span>
+                <div className="flex-1 bg-gray-100 rounded-full h-2">
+                  <div className="bg-primary-500 h-2 rounded-full" style={{ width: region.percent + '%' }}></div>
+                </div>
+                <span className="text-xs text-gray-500 w-12 text-right">{region.percent}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ========== Device Chart ==========
+    function DeviceChart({ data, loading }) {
+      if (loading || !data) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">デバイス</h3>
+            <div className="h-32 flex items-center justify-center">
+              <span className="text-gray-400 loading-pulse">読み込み中...</span>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="text-sm font-medium text-gray-700 mb-4">デバイス（GA4）</h3>
+          <div className="flex items-center justify-center gap-8">
+            {data.map((device, i) => (
+              <div key={i} className="text-center">
+                <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-lg mb-2" style={{ backgroundColor: device.color }}>
+                  {device.value}%
+                </div>
+                <p className="text-sm text-gray-600">{device.name}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ========== Top Companies ==========
+    function TopCompanies({ data, loading }) {
+      if (loading) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">アクセス企業TOP</h3>
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (<div key={i} className="h-10 bg-gray-200 rounded loading-pulse"></div>))}
+            </div>
+          </div>
+        );
+      }
+
+      if (!data || data.length === 0) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">アクセス企業TOP</h3>
+            <p className="text-xs text-gray-400">データがありません</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="text-sm font-medium text-gray-700 mb-4">アクセス企業TOP（どこどこJP）</h3>
+          <div className="space-y-3">
+            {data.slice(0, 5).map((company, i) => (
+              <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="font-medium text-gray-800">{company.name}</p>
+                  <p className="text-xs text-gray-500">{company.prefecture} / {company.industry}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-primary-600">{company.sessions}</p>
+                  <p className="text-xs text-gray-500">セッション</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ========== Companies Table ==========
+    function CompaniesTable({ data, loading }) {
+      if (loading) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-lg font-medium text-gray-700 mb-4">企業一覧</h3>
+            <div className="space-y-3">
+              {[...Array(10)].map((_, i) => (<div key={i} className="h-12 bg-gray-200 rounded loading-pulse"></div>))}
+            </div>
+          </div>
+        );
+      }
+
+      if (!data || data.length === 0) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-lg font-medium text-gray-700 mb-4">企業一覧</h3>
+            <p className="text-gray-400">データがありません</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 overflow-x-auto">
+          <h3 className="text-lg font-medium text-gray-700 mb-4">企業一覧（どこどこJP）</h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-3 px-2 font-medium text-gray-600">企業名</th>
+                <th className="text-left py-3 px-2 font-medium text-gray-600">都道府県</th>
+                <th className="text-left py-3 px-2 font-medium text-gray-600">業種</th>
+                <th className="text-left py-3 px-2 font-medium text-gray-600">従業員数</th>
+                <th className="text-right py-3 px-2 font-medium text-gray-600">セッション</th>
+                <th className="text-right py-3 px-2 font-medium text-gray-600">PV</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((company, i) => (
+                <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-3 px-2 font-medium">{company.name}</td>
+                  <td className="py-3 px-2 text-gray-600">{company.prefecture}</td>
+                  <td className="py-3 px-2 text-gray-600">{company.industry}</td>
+                  <td className="py-3 px-2 text-gray-600">{company.employees}</td>
+                  <td className="py-3 px-2 text-right font-bold text-primary-600">{company.sessions}</td>
+                  <td className="py-3 px-2 text-right text-gray-600">{company.pageViews}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    // ========== Utilities ==========
+    function formatDuration(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return mins + ':' + secs.toString().padStart(2, '0');
+    }
+
+    // ========== Render ==========
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
