@@ -617,7 +617,7 @@
     function AnalyticsDashboard({ project, onBack, onEdit }) {
       const [activeItem, setActiveItem] = useState('dashboard');
       const [dateRange, setDateRange] = useState('30daysAgo');
-      const [companies, setCompanies] = useState([]);
+      const [allCompaniesData, setAllCompaniesData] = useState([]); // 各URLごとの企業データ
       const [metrics, setMetrics] = useState(null);
       const [realtime, setRealtime] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -625,7 +625,23 @@
       const urlCategories = project.urlCategories || {};
       const orgExclusions = project.orgExclusions || [];
 
-      // 現在選択中のURLを取得
+      // 計測対象のURL一覧を取得（除外URL以外）
+      const getTargetUrls = () => {
+        const urls = [];
+        ['company-content', 'media-content', 'form-content'].forEach(catId => {
+          (urlCategories[catId] || []).forEach(item => {
+            urls.push({ ...item, category: catId });
+          });
+        });
+        return urls;
+      };
+
+      // 除外URLの一覧
+      const getExcludeUrls = () => {
+        return urlCategories['exclude-content'] || [];
+      };
+
+      // 現在選択中のURLを取得（個別表示用）
       const getActiveUrlFilter = () => {
         if (activeItem === 'dashboard') return null;
         if (activeItem.startsWith('url-')) {
@@ -638,34 +654,102 @@
         return null;
       };
 
-      const urlFilter = getActiveUrlFilter();
+      const activeUrlFilter = getActiveUrlFilter();
+      const targetUrls = getTargetUrls();
+      const excludeUrls = getExcludeUrls();
 
       const loadData = useCallback(async () => {
         setLoading(true);
         try {
-          const apiParams = { type: 'companies', startDate: dateRange, endDate: 'today' };
-          if (urlFilter) apiParams.url = urlFilter;
+          // 登録されたURLがない場合は空データ
+          if (targetUrls.length === 0) {
+            setMetrics({ pageViews: 0, activeUsers: 0, sessions: 0, avgSessionDuration: 0 });
+            setAllCompaniesData([]);
+            setRealtime({ totalActiveUsers: 0 });
+            setLoading(false);
+            return;
+          }
 
-          const [overviewRes, companiesRes, realtimeRes] = await Promise.all([
-            fetchGA4({ type: 'overview', startDate: dateRange, endDate: 'today' }),
-            fetchGA4(apiParams),
-            fetchGA4({ type: 'realtime' })
+          // 各URLごとに企業データを取得
+          const urlPromises = targetUrls.map(urlItem =>
+            fetchGA4({ type: 'companies', startDate: dateRange, endDate: 'today', url: urlItem.url })
+              .then(res => ({ urlItem, companies: res.data || [] }))
+              .catch(() => ({ urlItem, companies: [] }))
+          );
+
+          const [realtimeRes, ...urlResults] = await Promise.all([
+            fetchGA4({ type: 'realtime' }),
+            ...urlPromises
           ]);
-          setMetrics(overviewRes.data);
-          setCompanies(companiesRes.data || []);
+
+          setAllCompaniesData(urlResults);
           setRealtime(realtimeRes.data);
+
+          // 全URL合計の指標を計算（重複企業を考慮）
+          const companyMap = new Map();
+          urlResults.forEach(({ companies }) => {
+            companies.forEach(company => {
+              const key = company.name || '不明';
+              if (companyMap.has(key)) {
+                const existing = companyMap.get(key);
+                existing.sessions += company.sessions || 0;
+                existing.pageViews += company.pageViews || 0;
+              } else {
+                companyMap.set(key, { ...company });
+              }
+            });
+          });
+
+          const totalCompanies = Array.from(companyMap.values());
+          const totalPV = totalCompanies.reduce((sum, c) => sum + (c.pageViews || 0), 0);
+          const totalSessions = totalCompanies.reduce((sum, c) => sum + (c.sessions || 0), 0);
+          const totalUsers = totalCompanies.reduce((sum, c) => sum + (c.activeUsers || 0), 0);
+
+          setMetrics({
+            pageViews: totalPV,
+            activeUsers: totalUsers,
+            sessions: totalSessions,
+            avgSessionDuration: 0, // 合算では計算が複雑なので省略
+          });
+
         } catch (err) {
           console.error('Data load error:', err);
-          setMetrics(dummyMetrics);
-          setCompanies([]);
+          setMetrics({ pageViews: 0, activeUsers: 0, sessions: 0, avgSessionDuration: 0 });
+          setAllCompaniesData([]);
         } finally {
           setLoading(false);
         }
-      }, [dateRange, urlFilter]);
+      }, [dateRange, JSON.stringify(targetUrls)]);
 
       useEffect(() => { loadData(); }, [loadData]);
 
+      // 表示する企業データを計算
+      const getDisplayCompanies = () => {
+        const companyMap = new Map();
+
+        // アクティブなURLでフィルター、またはダッシュボードなら全URL
+        const relevantResults = activeUrlFilter
+          ? allCompaniesData.filter(r => r.urlItem.url === activeUrlFilter)
+          : allCompaniesData;
+
+        relevantResults.forEach(({ companies }) => {
+          companies.forEach(company => {
+            const key = company.name || '不明';
+            if (companyMap.has(key)) {
+              const existing = companyMap.get(key);
+              existing.sessions += company.sessions || 0;
+              existing.pageViews += company.pageViews || 0;
+            } else {
+              companyMap.set(key, { ...company });
+            }
+          });
+        });
+
+        return Array.from(companyMap.values());
+      };
+
       // 組織除外フィルター適用
+      const companies = getDisplayCompanies();
       const filteredCompanies = companies.filter(company => {
         for (const exc of orgExclusions) {
           if (exc.type === 'name' && company.name === exc.value) return false;
@@ -787,30 +871,50 @@
               <div className="flex items-center justify-between mb-5">
                 <div>
                   <h2 className="text-xl font-bold text-gray-800">{getTitle()}</h2>
-                  {urlFilter && <p className="text-sm text-gray-500">フィルター: <code className="bg-gray-100 px-2 py-0.5 rounded">{urlFilter}</code></p>}
+                  {activeUrlFilter && <p className="text-sm text-gray-500">フィルター: <code className="bg-gray-100 px-2 py-0.5 rounded">{activeUrlFilter}</code></p>}
                 </div>
               </div>
 
-              <RealtimeBanner data={realtime} loading={loading} />
+              {targetUrls.length === 0 ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
+                  <div className="text-6xl mb-4">📋</div>
+                  <p className="text-gray-600 mb-2 font-medium">計測対象のURLが設定されていません</p>
+                  <p className="text-sm text-gray-400 mb-4">「設定を編集」からURLを追加してください</p>
+                  <button onClick={onEdit} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">
+                    設定を編集
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <RealtimeBanner data={realtime} loading={loading} />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-                <MetricCard title="PV" value={metrics?.pageViews || 0} change={12.5} isPercent={true} loading={loading} />
-                <MetricCard title="ユーザー数" value={metrics?.activeUsers || 0} change={8.3} isPercent={true} loading={loading} />
-                <MetricCard title="セッション数" value={metrics?.sessions || 0} change={10.2} isPercent={true} loading={loading} />
-                <MetricCard title="平均滞在時間" value={metrics?.avgSessionDuration ? Math.floor(metrics.avgSessionDuration / 60) + '分' + Math.floor(metrics.avgSessionDuration % 60) + '秒' : '-'} change={5.1} isPercent={true} loading={loading} />
-              </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
+                    <p className="text-sm text-blue-700">
+                      <span className="font-medium">📊 計測対象:</span> {targetUrls.length}件のURLが設定されています
+                      {excludeUrls.length > 0 && <span className="ml-2 text-blue-500">（除外: {excludeUrls.length}件）</span>}
+                    </p>
+                  </div>
 
-              <div className="mb-5"><TrendChart data={dummyDailyData} /></div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+                    <MetricCard title="PV" value={metrics?.pageViews || 0} change={12.5} isPercent={true} loading={loading} />
+                    <MetricCard title="ユーザー数" value={metrics?.activeUsers || 0} change={8.3} isPercent={true} loading={loading} />
+                    <MetricCard title="セッション数" value={metrics?.sessions || 0} change={10.2} isPercent={true} loading={loading} />
+                    <MetricCard title="来場企業数" value={filteredCompanies.length} change={0} isPercent={true} loading={loading} />
+                  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                <RegionDistribution data={regions.length > 0 ? regions : dummyRegions} loading={loading} />
-                <DeviceChart data={dummyDevices} />
-              </div>
+                  <div className="mb-5"><TrendChart data={dummyDailyData} /></div>
 
-              <div className="mb-5">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">来場組織（どこどこJP連携）</h3>
-                <OrganizationList companies={filteredCompanies} loading={loading} />
-              </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                    <RegionDistribution data={regions.length > 0 ? regions : dummyRegions} loading={loading} />
+                    <DeviceChart data={dummyDevices} />
+                  </div>
+
+                  <div className="mb-5">
+                    <h3 className="text-sm font-medium text-gray-700 mb-3">来場組織（どこどこJP連携）</h3>
+                    <OrganizationList companies={filteredCompanies} loading={loading} />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
