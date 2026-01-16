@@ -45,6 +45,18 @@ exports.handler = async (event) => {
       case 'overview':
         response = await getOverviewReport(startDate, endDate);
         break;
+      case 'overview-by-url':
+        response = await getOverviewByUrlReport(startDate, endDate, urlFilter, urlMatchType);
+        break;
+      case 'daily-trend':
+        response = await getDailyTrendReport(startDate, endDate, urlFilter, urlMatchType);
+        break;
+      case 'regions':
+        response = await getRegionsReport(startDate, endDate, urlFilter, urlMatchType);
+        break;
+      case 'devices':
+        response = await getDevicesReport(startDate, endDate, urlFilter, urlMatchType);
+        break;
       case 'companies':
         response = await getCompaniesReport(startDate, endDate, {
           urlFilter,
@@ -112,6 +124,209 @@ async function getOverviewReport(startDate, endDate) {
       avgSessionDuration: parseFloat(metrics[3]?.value || 0),
       bounceRate: parseFloat(metrics[4]?.value || 0),
     },
+  };
+}
+
+// URL別概要レポート（URLフィルター付きでPV/セッション/ユーザーを取得）
+async function getOverviewByUrlReport(startDate, endDate, urlFilter, urlMatchType) {
+  const request = {
+    property: `properties/${PROPERTY_ID}`,
+    dateRanges: [{ startDate, endDate }],
+    metrics: [
+      { name: 'activeUsers' },
+      { name: 'sessions' },
+      { name: 'screenPageViews' },
+      { name: 'averageSessionDuration' },
+    ],
+  };
+
+  if (urlFilter) {
+    let gaMatchType = 'CONTAINS';
+    if (urlMatchType === 'exact') {
+      gaMatchType = 'EXACT';
+    } else if (urlMatchType === 'prefix') {
+      gaMatchType = 'BEGINS_WITH';
+    }
+    request.dimensionFilter = {
+      filter: {
+        fieldName: 'pagePath',
+        stringFilter: { value: urlFilter, matchType: gaMatchType },
+      },
+    };
+  }
+
+  const [response] = await analyticsDataClient.runReport(request);
+  const metrics = response.rows?.[0]?.metricValues || [];
+
+  return {
+    type: 'overview-by-url',
+    data: {
+      activeUsers: parseInt(metrics[0]?.value || 0),
+      sessions: parseInt(metrics[1]?.value || 0),
+      pageViews: parseInt(metrics[2]?.value || 0),
+      avgSessionDuration: parseFloat(metrics[3]?.value || 0),
+    },
+  };
+}
+
+// 日別推移レポート（PVの日別推移）
+async function getDailyTrendReport(startDate, endDate, urlFilter, urlMatchType) {
+  const request = {
+    property: `properties/${PROPERTY_ID}`,
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: 'date' }],
+    metrics: [
+      { name: 'screenPageViews' },
+      { name: 'sessions' },
+      { name: 'activeUsers' },
+    ],
+    orderBys: [{ dimension: { dimensionName: 'date' }, desc: false }],
+  };
+
+  if (urlFilter) {
+    let gaMatchType = 'CONTAINS';
+    if (urlMatchType === 'exact') {
+      gaMatchType = 'EXACT';
+    } else if (urlMatchType === 'prefix') {
+      gaMatchType = 'BEGINS_WITH';
+    }
+    request.dimensionFilter = {
+      filter: {
+        fieldName: 'pagePath',
+        stringFilter: { value: urlFilter, matchType: gaMatchType },
+      },
+    };
+  }
+
+  const [response] = await analyticsDataClient.runReport(request);
+
+  const dailyData = (response.rows || []).map((row) => {
+    const dateStr = row.dimensionValues[0]?.value || '';
+    // YYYYMMDD形式をMM/DD形式に変換
+    const formatted = dateStr.length === 8
+      ? `${dateStr.slice(4, 6)}/${dateStr.slice(6, 8)}`
+      : dateStr;
+    return {
+      date: formatted,
+      pv: parseInt(row.metricValues[0]?.value || 0),
+      sessions: parseInt(row.metricValues[1]?.value || 0),
+      users: parseInt(row.metricValues[2]?.value || 0),
+    };
+  });
+
+  return {
+    type: 'daily-trend',
+    data: dailyData,
+  };
+}
+
+// 地域別レポート（GA4のregionディメンションを使用）
+async function getRegionsReport(startDate, endDate, urlFilter, urlMatchType) {
+  const request = {
+    property: `properties/${PROPERTY_ID}`,
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: 'region' }],
+    metrics: [
+      { name: 'sessions' },
+      { name: 'activeUsers' },
+      { name: 'screenPageViews' },
+    ],
+    orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+    limit: 20,
+  };
+
+  if (urlFilter) {
+    let gaMatchType = 'CONTAINS';
+    if (urlMatchType === 'exact') {
+      gaMatchType = 'EXACT';
+    } else if (urlMatchType === 'prefix') {
+      gaMatchType = 'BEGINS_WITH';
+    }
+    request.dimensionFilter = {
+      filter: {
+        fieldName: 'pagePath',
+        stringFilter: { value: urlFilter, matchType: gaMatchType },
+      },
+    };
+  }
+
+  const [response] = await analyticsDataClient.runReport(request);
+
+  const regions = (response.rows || []).map((row) => ({
+    name: row.dimensionValues[0]?.value || '(not set)',
+    sessions: parseInt(row.metricValues[0]?.value || 0),
+    users: parseInt(row.metricValues[1]?.value || 0),
+    pageViews: parseInt(row.metricValues[2]?.value || 0),
+  }));
+
+  // 合計セッション数を計算してパーセンテージを追加
+  const totalSessions = regions.reduce((sum, r) => sum + r.sessions, 0) || 1;
+  const regionsWithPercent = regions.map((r) => ({
+    ...r,
+    percent: ((r.sessions / totalSessions) * 100).toFixed(1),
+  }));
+
+  return {
+    type: 'regions',
+    data: regionsWithPercent,
+  };
+}
+
+// デバイス別レポート（GA4のdeviceCategoryディメンションを使用）
+async function getDevicesReport(startDate, endDate, urlFilter, urlMatchType) {
+  const request = {
+    property: `properties/${PROPERTY_ID}`,
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: 'deviceCategory' }],
+    metrics: [
+      { name: 'sessions' },
+      { name: 'activeUsers' },
+    ],
+    orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+  };
+
+  if (urlFilter) {
+    let gaMatchType = 'CONTAINS';
+    if (urlMatchType === 'exact') {
+      gaMatchType = 'EXACT';
+    } else if (urlMatchType === 'prefix') {
+      gaMatchType = 'BEGINS_WITH';
+    }
+    request.dimensionFilter = {
+      filter: {
+        fieldName: 'pagePath',
+        stringFilter: { value: urlFilter, matchType: gaMatchType },
+      },
+    };
+  }
+
+  const [response] = await analyticsDataClient.runReport(request);
+
+  const deviceColors = {
+    desktop: '#8b5cf6',
+    mobile: '#22c55e',
+    tablet: '#f97316',
+  };
+
+  const totalSessions = (response.rows || []).reduce(
+    (sum, row) => sum + parseInt(row.metricValues[0]?.value || 0),
+    0
+  ) || 1;
+
+  const devices = (response.rows || []).map((row) => {
+    const name = row.dimensionValues[0]?.value || 'other';
+    const sessions = parseInt(row.metricValues[0]?.value || 0);
+    return {
+      name: name === 'desktop' ? 'PC' : name === 'mobile' ? 'Mobile' : name === 'tablet' ? 'Tablet' : name,
+      value: Math.round((sessions / totalSessions) * 100),
+      color: deviceColors[name.toLowerCase()] || '#94a3b8',
+      sessions,
+    };
+  });
+
+  return {
+    type: 'devices',
+    data: devices,
   };
 }
 
