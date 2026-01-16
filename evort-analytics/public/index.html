@@ -522,6 +522,7 @@
                       className="w-full px-3 py-2 text-sm border rounded-lg">
                       <option value="prefix">前方一致</option>
                       <option value="exact">完全一致</option>
+                      <option value="contains">含む</option>
                     </select>
                   </div>
                   <div className="flex items-end">
@@ -551,7 +552,7 @@
                             <div className="flex items-center gap-2 text-sm">
                               <span className={`font-medium ${colors.text}`}>{item.title}</span>
                               <code className="text-xs bg-white px-2 py-0.5 rounded border">{item.url}</code>
-                              <span className="text-xs text-gray-400">{item.matchType === 'exact' ? '完全一致' : '前方一致'}</span>
+                              <span className="text-xs text-gray-400">{item.matchType === 'exact' ? '完全一致' : item.matchType === 'contains' ? '含む' : '前方一致'}</span>
                             </div>
                             <button onClick={() => removeUrl(category.id, item.id)} className="text-red-400 hover:text-red-600">✕</button>
                           </div>
@@ -617,7 +618,7 @@
     function AnalyticsDashboard({ project, onBack, onEdit }) {
       const [activeItem, setActiveItem] = useState('dashboard');
       const [dateRange, setDateRange] = useState('30daysAgo');
-      const [allCompaniesData, setAllCompaniesData] = useState([]); // 各URLごとの企業データ
+      const [allCompaniesData, setAllCompaniesData] = useState({ combined: [], subpages: {} }); // 各URLごとの企業データ
       const [subpagesData, setSubpagesData] = useState({}); // 各親URLの子ページデータ
       const [metrics, setMetrics] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -699,11 +700,18 @@
             return;
           }
 
-          // 各URLごとに企業データと子ページデータを取得
-          const urlPromises = targetUrls.map(urlItem =>
-            fetchGA4({ type: 'companies', startDate: dateRange, endDate: 'today', url: urlItem.url })
-              .then(res => ({ urlItem, companies: res.data || [] }))
-              .catch(() => ({ urlItem, companies: [] }))
+          // 各URLごとに企業データを取得（前方一致=カテゴリ用）
+          const urlPrefixPromises = targetUrls.map(urlItem =>
+            fetchGA4({ type: 'companies', startDate: dateRange, endDate: 'today', url: urlItem.url, urlMatchType: 'prefix' })
+              .then(res => ({ urlItem, companies: res.data || [], matchType: 'prefix' }))
+              .catch(() => ({ urlItem, companies: [], matchType: 'prefix' }))
+          );
+
+          // 各URLごとに企業データを取得（完全一致=個別URL用）
+          const urlExactPromises = targetUrls.map(urlItem =>
+            fetchGA4({ type: 'companies', startDate: dateRange, endDate: 'today', url: urlItem.url, urlMatchType: 'exact' })
+              .then(res => ({ urlItem, companies: res.data || [], matchType: 'exact' }))
+              .catch(() => ({ urlItem, companies: [], matchType: 'exact' }))
           );
 
           // 子ページデータを取得（前方一致で配下のページを全取得）
@@ -713,29 +721,68 @@
               .catch(() => ({ parentUrl: urlItem.url, pages: [] }))
           );
 
-          const allResults = await Promise.all([
-            ...urlPromises,
-            ...subpagePromises
+          // 子ページ用のデータ取得（各子ページごとに完全一致で取得）
+          // ※ 子ページ一覧取得後に動的に取得
+
+          const [prefixResults, exactResults, subpageResults] = await Promise.all([
+            Promise.all(urlPrefixPromises),
+            Promise.all(urlExactPromises),
+            Promise.all(subpagePromises),
           ]);
-
-          // 企業データと子ページデータを分離
-          const urlResults = allResults.slice(0, targetUrls.length);
-          const subpageResults = allResults.slice(targetUrls.length);
-
-          setAllCompaniesData(urlResults);
 
           // 子ページデータをオブジェクトに変換
           const subpagesObj = {};
+          const expandState = {};
           subpageResults.forEach(({ parentUrl, pages }) => {
-            // 親URL自身を除外し、子ページのみを保持
-            subpagesObj[parentUrl] = pages.filter(p => p.path !== parentUrl && p.path.startsWith(parentUrl));
+            subpagesObj[parentUrl] = pages.filter(p =>
+              p.path !== parentUrl &&
+              p.path.startsWith(parentUrl) &&
+              !p.path.includes('/preview')
+            );
+            targetUrls.forEach(u => {
+              if (u.url === parentUrl && subpagesObj[parentUrl].length > 0) {
+                expandState[u.id] = true;
+              }
+            });
           });
           setSubpagesData(subpagesObj);
+          setExpandedUrls(prev => ({ ...prev, ...expandState }));
 
-          // 全URL合計の指標を計算（重複企業を考慮）
+          // 子ページごとの企業データを取得（完全一致）
+          const allSubpages = [];
+          Object.entries(subpagesObj).forEach(([parentUrl, pages]) => {
+            pages.forEach(page => allSubpages.push({ parentUrl, path: page.path }));
+          });
+
+          const subpageExactPromises = allSubpages.map(({ parentUrl, path }) =>
+            fetchGA4({ type: 'companies', startDate: dateRange, endDate: 'today', url: path, urlMatchType: 'exact' })
+              .then(res => ({ parentUrl, path, companies: res.data || [] }))
+              .catch(() => ({ parentUrl, path, companies: [] }))
+          );
+
+          const subpageExactResults = await Promise.all(subpageExactPromises);
+
+          // データをまとめる
+          // allCompaniesData: { urlItem, companiesPrefix, companiesExact }
+          const combinedData = targetUrls.map((urlItem, idx) => ({
+            urlItem,
+            companiesPrefix: prefixResults[idx]?.companies || [],
+            companiesExact: exactResults[idx]?.companies || [],
+          }));
+
+          // 子ページデータも保存
+          const subpageCompaniesObj = {};
+          subpageExactResults.forEach(({ parentUrl, path, companies }) => {
+            if (!subpageCompaniesObj[parentUrl]) subpageCompaniesObj[parentUrl] = {};
+            subpageCompaniesObj[parentUrl][path] = companies;
+          });
+
+          setAllCompaniesData({ combined: combinedData, subpages: subpageCompaniesObj });
+
+          // 全URL合計の指標を計算（前方一致データの合算、重複企業を考慮）
           const companyMap = new Map();
-          urlResults.forEach(({ companies }) => {
-            companies.forEach(company => {
+          combinedData.forEach(({ companiesPrefix }) => {
+            companiesPrefix.forEach(company => {
               const key = company.name || '不明';
               if (companyMap.has(key)) {
                 const existing = companyMap.get(key);
@@ -756,13 +803,13 @@
             pageViews: totalPV,
             activeUsers: totalUsers,
             sessions: totalSessions,
-            avgSessionDuration: 0, // 合算では計算が複雑なので省略
+            avgSessionDuration: 0,
           });
 
         } catch (err) {
           console.error('Data load error:', err);
           setMetrics({ pageViews: 0, activeUsers: 0, sessions: 0, avgSessionDuration: 0 });
-          setAllCompaniesData([]);
+          setAllCompaniesData({ combined: [], subpages: {} });
           setSubpagesData({});
         } finally {
           setLoading(false);
@@ -774,25 +821,55 @@
       // 表示する企業データを計算
       const getDisplayCompanies = () => {
         const companyMap = new Map();
+        const { combined = [], subpages = {} } = allCompaniesData || {};
 
         // フィルターに応じてデータを絞り込み
-        let relevantResults = allCompaniesData;
-
-        if (activeFilter.type === 'category') {
-          // カテゴリ全体：そのカテゴリに属するURL全ての合算
-          relevantResults = allCompaniesData.filter(r => r.urlItem.category === activeFilter.categoryId);
+        if (activeFilter.type === 'all') {
+          // ダッシュボード：全URL合算（前方一致データ使用）
+          combined.forEach(({ companiesPrefix }) => {
+            companiesPrefix.forEach(company => {
+              const key = company.name || '不明';
+              if (companyMap.has(key)) {
+                const existing = companyMap.get(key);
+                existing.sessions += company.sessions || 0;
+                existing.pageViews += company.pageViews || 0;
+              } else {
+                companyMap.set(key, { ...company });
+              }
+            });
+          });
+        } else if (activeFilter.type === 'category') {
+          // カテゴリ：そのカテゴリ内のURL全て（前方一致データ使用）
+          combined.filter(r => r.urlItem.category === activeFilter.categoryId).forEach(({ companiesPrefix }) => {
+            companiesPrefix.forEach(company => {
+              const key = company.name || '不明';
+              if (companyMap.has(key)) {
+                const existing = companyMap.get(key);
+                existing.sessions += company.sessions || 0;
+                existing.pageViews += company.pageViews || 0;
+              } else {
+                companyMap.set(key, { ...company });
+              }
+            });
+          });
         } else if (activeFilter.type === 'url') {
-          // 親URL：そのURL配下全体
-          relevantResults = allCompaniesData.filter(r => r.urlItem.url === activeFilter.url);
+          // 親URL：完全一致データのみを使用（子ページは含まない）
+          combined.filter(r => r.urlItem.url === activeFilter.url).forEach(({ companiesExact }) => {
+            companiesExact.forEach(company => {
+              const key = company.name || '不明';
+              if (companyMap.has(key)) {
+                const existing = companyMap.get(key);
+                existing.sessions += company.sessions || 0;
+                existing.pageViews += company.pageViews || 0;
+              } else {
+                companyMap.set(key, { ...company });
+              }
+            });
+          });
         } else if (activeFilter.type === 'subpage') {
-          // 子ページ：親URLのデータから、特定パスのみをフィルタ
-          // （注：現状のAPIでは子ページ単体の企業データは取得していないため、親URLで代用）
-          relevantResults = allCompaniesData.filter(r => r.urlItem.url === activeFilter.parentUrl);
-        }
-        // type === 'all' の場合は全URL（ダッシュボード）
-
-        relevantResults.forEach(({ companies }) => {
-          companies.forEach(company => {
+          // 子ページ：完全一致データのみを使用
+          const subpageCompanies = subpages[activeFilter.parentUrl]?.[activeFilter.url] || [];
+          subpageCompanies.forEach(company => {
             const key = company.name || '不明';
             if (companyMap.has(key)) {
               const existing = companyMap.get(key);
@@ -802,7 +879,7 @@
               companyMap.set(key, { ...company });
             }
           });
-        });
+        }
 
         return Array.from(companyMap.values());
       };
