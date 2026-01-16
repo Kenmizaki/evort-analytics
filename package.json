@@ -1,0 +1,17 @@
+{
+    "name": "evort-analytics",
+    "version": "1.0.0",
+    "description": "GA4 Analytics Dashboard for Vercel",
+    "main": "api/ga4-report.js",
+    "scripts": {
+          "dev": "vercel dev",
+          "build": "vercel build",
+          "deploy": "vercel --prod"
+    },
+    "dependencies": {
+          "@google-analytics/data": "^4.0.0"
+    },
+    "engines": {
+          "node": ">=18"
+    }
+}
