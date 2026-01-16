@@ -641,20 +641,27 @@
         return urlCategories['exclude-content'] || [];
       };
 
-      // 現在選択中のURLを取得（個別表示用）
-      const getActiveUrlFilter = () => {
-        if (activeItem === 'dashboard') return null;
+      // 現在選択中のフィルター情報を取得
+      const getActiveFilter = () => {
+        if (activeItem === 'dashboard') {
+          return { type: 'all', categoryId: null, urlId: null };
+        }
+        // カテゴリが選択されている場合（company-content, media-content, form-content）
+        if (['company-content', 'media-content', 'form-content'].includes(activeItem)) {
+          return { type: 'category', categoryId: activeItem, urlId: null };
+        }
+        // 個別URLが選択されている場合
         if (activeItem.startsWith('url-')) {
           const urlId = parseInt(activeItem.replace('url-', ''));
           for (const catId of Object.keys(urlCategories)) {
             const urlItem = urlCategories[catId]?.find(u => u.id === urlId);
-            if (urlItem) return urlItem.url;
+            if (urlItem) return { type: 'url', categoryId: catId, urlId, url: urlItem.url };
           }
         }
-        return null;
+        return { type: 'all', categoryId: null, urlId: null };
       };
 
-      const activeUrlFilter = getActiveUrlFilter();
+      const activeFilter = getActiveFilter();
       const targetUrls = getTargetUrls();
       const excludeUrls = getExcludeUrls();
 
@@ -727,10 +734,17 @@
       const getDisplayCompanies = () => {
         const companyMap = new Map();
 
-        // アクティブなURLでフィルター、またはダッシュボードなら全URL
-        const relevantResults = activeUrlFilter
-          ? allCompaniesData.filter(r => r.urlItem.url === activeUrlFilter)
-          : allCompaniesData;
+        // フィルターに応じてデータを絞り込み
+        let relevantResults = allCompaniesData;
+
+        if (activeFilter.type === 'category') {
+          // カテゴリ全体：そのカテゴリに属するURL全ての合算
+          relevantResults = allCompaniesData.filter(r => r.urlItem.category === activeFilter.categoryId);
+        } else if (activeFilter.type === 'url') {
+          // 個別URL：そのURLのみ
+          relevantResults = allCompaniesData.filter(r => r.urlItem.url === activeFilter.url);
+        }
+        // type === 'all' の場合は全URL（ダッシュボード）
 
         relevantResults.forEach(({ companies }) => {
           companies.forEach(company => {
@@ -773,16 +787,19 @@
 
       // 現在のタイトル
       const getTitle = () => {
-        if (activeItem === 'dashboard') return 'ダッシュボード';
-        if (activeItem.startsWith('url-')) {
-          const urlId = parseInt(activeItem.replace('url-', ''));
+        if (activeFilter.type === 'all') return 'ダッシュボード';
+        if (activeFilter.type === 'category') {
+          const cat = URL_CATEGORIES.find(c => c.id === activeFilter.categoryId);
+          return cat?.label || '';
+        }
+        if (activeFilter.type === 'url') {
+          const urlId = activeFilter.urlId;
           for (const catId of Object.keys(urlCategories)) {
             const urlItem = urlCategories[catId]?.find(u => u.id === urlId);
             if (urlItem) return urlItem.title;
           }
         }
-        const cat = URL_CATEGORIES.find(c => c.id === activeItem);
-        return cat?.label || '';
+        return '';
       };
 
       const dateOptions = [
@@ -827,18 +844,26 @@
               {/* URLカテゴリ */}
               {URL_CATEGORIES.filter(c => c.id !== 'exclude-content').map(category => {
                 const urls = urlCategories[category.id] || [];
+                const isCategoryActive = activeItem === category.id;
+                const hasUrls = urls.length > 0;
                 return (
                   <div key={category.id} className="mb-1">
-                    <div className="px-3 py-2 text-sm text-gray-600 flex items-center gap-2">
+                    {/* カテゴリ見出し（クリック可能） */}
+                    <button
+                      className={`w-full px-3 py-2 text-sm flex items-center gap-2 rounded-lg text-left ${isCategoryActive ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50'}`}
+                      onClick={() => setActiveItem(category.id)}
+                      disabled={!hasUrls}
+                    >
                       <span>{category.icon}</span>
                       <span className="font-medium">{category.label}</span>
-                      {urls.length > 0 && <span className="text-xs text-gray-400">{urls.length}</span>}
-                    </div>
-                    {urls.length > 0 && (
-                      <div className="ml-7 space-y-1">
+                      {hasUrls && <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded-full">{urls.length}</span>}
+                    </button>
+                    {/* 個別URL */}
+                    {hasUrls && (
+                      <div className="ml-7 space-y-1 mt-1">
                         {urls.map(item => (
                           <button key={item.id}
-                            className={`w-full px-3 py-1.5 rounded text-left text-xs ${activeItem === `url-${item.id}` ? 'bg-primary-50 text-primary-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                            className={`w-full px-3 py-1.5 rounded text-left text-xs ${activeItem === `url-${item.id}` ? 'bg-primary-100 text-primary-700 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
                             onClick={() => setActiveItem(`url-${item.id}`)}>
                             {item.title}
                           </button>
@@ -871,7 +896,8 @@
               <div className="flex items-center justify-between mb-5">
                 <div>
                   <h2 className="text-xl font-bold text-gray-800">{getTitle()}</h2>
-                  {activeUrlFilter && <p className="text-sm text-gray-500">フィルター: <code className="bg-gray-100 px-2 py-0.5 rounded">{activeUrlFilter}</code></p>}
+                  {activeFilter.type === 'url' && <p className="text-sm text-gray-500">URL: <code className="bg-gray-100 px-2 py-0.5 rounded">{activeFilter.url}</code></p>}
+                  {activeFilter.type === 'category' && <p className="text-sm text-gray-500">カテゴリ内の全URL合算</p>}
                 </div>
               </div>
 
