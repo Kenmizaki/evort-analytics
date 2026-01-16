@@ -56,14 +56,10 @@
       }
     }
 
-    // ========== フォールバック用ダミーデータ ==========
-    const dummyMetrics = { pv: 1847, users: 892 };
-    const dummyDailyData = Array.from({ length: 31 }, (_, i) => ({ date: `12/${i + 1}`, pv: Math.floor(Math.random() * 60) + 30, transitions: Math.floor(Math.random() * 4) }));
-    const dummyRegions = [
-      { name: 'Tokyo', pv: 423, percent: 22.9 }, { name: 'Osaka', pv: 287, percent: 15.5 }, { name: 'Aichi', pv: 198, percent: 10.7 },
-      { name: 'Kanagawa', pv: 156, percent: 8.4 }, { name: 'Fukuoka', pv: 134, percent: 7.3 }
-    ];
-    const dummyDevices = [{ name: 'PC', value: 68, color: '#8b5cf6' }, { name: 'Mobile', value: 29, color: '#22c55e' }, { name: 'Tablet', value: 3, color: '#94a3b8' }];
+    // ========== フォールバック用ダミーデータ（初期表示用） ==========
+    const emptyDailyData = [{ date: '-', pv: 0, sessions: 0 }];
+    const emptyRegions = [];
+    const emptyDevices = [{ name: 'PC', value: 0, color: '#8b5cf6' }, { name: 'Mobile', value: 0, color: '#22c55e' }, { name: 'Tablet', value: 0, color: '#94a3b8' }];
 
     // ========== 4つのURLカテゴリ ==========
     const URL_CATEGORIES = [
@@ -90,8 +86,7 @@
     // ========== 共通コンポーネント ==========
 
     // 指標カード
-    function MetricCard({ title, value, change, suffix = '', isPercent = false, loading = false }) {
-      const isPositive = change >= 0;
+    function MetricCard({ title, value, suffix = '', loading = false }) {
       if (loading) return (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="h-4 w-16 bg-gray-200 rounded loading-pulse mb-2"></div>
@@ -104,9 +99,6 @@
           <div className="text-2xl font-bold text-gray-800">
             {typeof value === 'number' ? value.toLocaleString() : value}
             {suffix && <span className="text-base font-normal text-gray-500 ml-1">{suffix}</span>}
-          </div>
-          <div className={`text-xs mt-2 ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-            {isPositive ? '↑' : '↓'} {isPercent ? `${Math.abs(change)}%` : Math.abs(change)} 前月比
           </div>
         </div>
       );
@@ -134,13 +126,15 @@
       );
     }
 
-    // 推移グラフ
-    function TrendChart({ data }) {
+    // 推移グラフ（GA4から取得した日別データを使用）
+    function TrendChart({ data, loading }) {
       const chartRef = useRef(null);
       const chartInstance = useRef(null);
 
       useEffect(() => {
         if (chartInstance.current) chartInstance.current.destroy();
+        if (!data || data.length === 0) return;
+
         const ctx = chartRef.current.getContext('2d');
         const pvGradient = ctx.createLinearGradient(0, 0, 0, 220);
         pvGradient.addColorStop(0, 'rgba(99, 102, 241, 0.9)');
@@ -156,7 +150,7 @@
               borderColor: 'rgba(99, 102, 241, 0.8)', borderWidth: 2, tension: 0.4, pointRadius: 0,
               yAxisID: 'y', order: 2
             }, {
-              label: 'フォーム遷移数', data: data.map(d => d.transitions), fill: false, borderColor: '#f97316',
+              label: 'セッション', data: data.map(d => d.sessions), fill: false, borderColor: '#f97316',
               borderWidth: 2, tension: 0.3, pointRadius: 3, yAxisID: 'y1', order: 1
             }]
           },
@@ -164,7 +158,7 @@
             responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
             scales: {
               y: { type: 'linear', display: true, position: 'left', grid: { color: '#f1f5f9' }, beginAtZero: true },
-              y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, min: 0, max: 6 },
+              y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, beginAtZero: true },
               x: { grid: { display: false } }
             },
             plugins: { legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true } } }
@@ -173,29 +167,50 @@
         return () => { if (chartInstance.current) chartInstance.current.destroy(); };
       }, [data]);
 
+      if (loading) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">推移</h3>
+            <div style={{ height: '220px' }} className="flex items-center justify-center">
+              <span className="text-gray-400 loading-pulse">読み込み中...</span>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <h3 className="text-sm font-medium text-gray-700 mb-4">推移</h3>
+          <h3 className="text-sm font-medium text-gray-700 mb-4">推移（GA4データ）</h3>
           <div style={{ height: '220px' }}><canvas ref={chartRef}></canvas></div>
         </div>
       );
     }
 
-    // 地域分布
+    // 地域分布（GA4のregionディメンションを使用 - 実際のアクセス元地域）
     function RegionDistribution({ data, loading }) {
       if (loading) return (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
           <div className="space-y-2">{Array(5).fill(0).map((_, i) => <div key={i} className="h-4 bg-gray-200 rounded loading-pulse"></div>)}</div>
         </div>
       );
+
+      if (!data || data.length === 0) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">アクセス元地域（GA4）</h3>
+            <p className="text-xs text-gray-400">データがありません</p>
+          </div>
+        );
+      }
+
       return (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
-          <h3 className="text-sm font-medium text-gray-700 mb-4">地域分布（上位5）</h3>
+          <h3 className="text-sm font-medium text-gray-700 mb-4">アクセス元地域（GA4 上位5）</h3>
           <div className="space-y-2">
             {data.slice(0, 5).map((region, index) => (
               <div key={region.name} className="flex items-center justify-between text-xs">
                 <div className="flex items-center"><span className="text-gray-400 w-5">{index + 1}.</span><span className="text-gray-700">{region.name}</span></div>
-                <div className="flex items-center gap-3"><span className="text-gray-600">{region.pv}</span><span className="text-gray-400">{region.percent}%</span></div>
+                <div className="flex items-center gap-3"><span className="text-gray-600">{region.sessions}</span><span className="text-gray-400">{region.percent}%</span></div>
               </div>
             ))}
           </div>
@@ -203,13 +218,15 @@
       );
     }
 
-    // デバイスチャート
-    function DeviceChart({ data }) {
+    // デバイスチャート（GA4から取得）
+    function DeviceChart({ data, loading }) {
       const chartRef = useRef(null);
       const chartInstance = useRef(null);
 
       useEffect(() => {
         if (chartInstance.current) chartInstance.current.destroy();
+        if (!data || data.length === 0) return;
+
         const ctx = chartRef.current.getContext('2d');
         chartInstance.current = new Chart(ctx, {
           type: 'doughnut',
@@ -219,9 +236,29 @@
         return () => { if (chartInstance.current) chartInstance.current.destroy(); };
       }, [data]);
 
+      if (loading) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">デバイス（GA4）</h3>
+            <div className="flex items-center justify-center h-20">
+              <span className="text-gray-400 loading-pulse">読み込み中...</span>
+            </div>
+          </div>
+        );
+      }
+
+      if (!data || data.length === 0) {
+        return (
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
+            <h3 className="text-sm font-medium text-gray-700 mb-4">デバイス（GA4）</h3>
+            <p className="text-xs text-gray-400">データがありません</p>
+          </div>
+        );
+      }
+
       return (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
-          <h3 className="text-sm font-medium text-gray-700 mb-4">デバイス</h3>
+          <h3 className="text-sm font-medium text-gray-700 mb-4">デバイス（GA4）</h3>
           <div className="flex items-center gap-6">
             <div style={{ width: '80px', height: '80px' }}><canvas ref={chartRef}></canvas></div>
             <div className="flex-1 space-y-2">
@@ -618,9 +655,12 @@
     function AnalyticsDashboard({ project, onBack, onEdit }) {
       const [activeItem, setActiveItem] = useState('dashboard');
       const [dateRange, setDateRange] = useState('30daysAgo');
-      const [allCompaniesData, setAllCompaniesData] = useState({ combined: [], subpages: {} }); // 各URLごとの企業データ
+      const [allCompaniesData, setAllCompaniesData] = useState({ combined: [], subpages: {} }); // 各URLごとの企業データ（どこどこJP）
       const [subpagesData, setSubpagesData] = useState({}); // 各親URLの子ページデータ
-      const [metrics, setMetrics] = useState(null);
+      const [ga4Metrics, setGa4Metrics] = useState({ pageViews: 0, sessions: 0, activeUsers: 0, avgSessionDuration: 0 }); // GA4メトリクス
+      const [dailyTrendData, setDailyTrendData] = useState([]); // GA4日別推移データ
+      const [regionData, setRegionData] = useState([]); // GA4地域データ
+      const [deviceData, setDeviceData] = useState([]); // GA4デバイスデータ
       const [loading, setLoading] = useState(true);
       const [expandedUrls, setExpandedUrls] = useState({}); // 展開状態
 
@@ -693,13 +733,54 @@
         try {
           // 登録されたURLがない場合は空データ
           if (targetUrls.length === 0) {
-            setMetrics({ pageViews: 0, activeUsers: 0, sessions: 0, avgSessionDuration: 0 });
-            setAllCompaniesData([]);
+            setGa4Metrics({ pageViews: 0, activeUsers: 0, sessions: 0, avgSessionDuration: 0 });
+            setDailyTrendData([]);
+            setRegionData([]);
+            setDeviceData([]);
+            setAllCompaniesData({ combined: [], subpages: {} });
             setSubpagesData({});
             setLoading(false);
             return;
           }
 
+          // URLフィルターを構築（現在のactiveItemに基づく）
+          let urlFilter = null;
+          let urlMatchType = 'prefix';
+
+          if (activeFilter.type === 'all') {
+            // ダッシュボード: 全登録URLのデータを取得（フィルターなし）
+            urlFilter = null;
+          } else if (activeFilter.type === 'category') {
+            // カテゴリ: そのカテゴリ内の最初のURLをフィルターとして使用
+            // 複数URLの場合は個別に取得して合算が必要だが、簡略化のためフィルターなし
+            urlFilter = null;
+          } else if (activeFilter.type === 'url') {
+            // 親URL選択時: そのURL（前方一致で配下も含む）
+            urlFilter = activeFilter.url;
+            urlMatchType = 'prefix';
+          } else if (activeFilter.type === 'subpage') {
+            // 子ページ選択時: 完全一致
+            urlFilter = activeFilter.url;
+            urlMatchType = 'exact';
+          }
+
+          // GA4から直接メトリクス、日別推移、地域、デバイスデータを取得
+          const ga4Promises = [
+            // 1. overview-by-url: PV/セッション/ユーザー
+            fetchGA4({ type: 'overview-by-url', startDate: dateRange, endDate: 'today', url: urlFilter, urlMatchType })
+              .catch(() => ({ data: { pageViews: 0, sessions: 0, activeUsers: 0, avgSessionDuration: 0 } })),
+            // 2. daily-trend: 日別推移
+            fetchGA4({ type: 'daily-trend', startDate: dateRange, endDate: 'today', url: urlFilter, urlMatchType })
+              .catch(() => ({ data: [] })),
+            // 3. regions: 地域データ
+            fetchGA4({ type: 'regions', startDate: dateRange, endDate: 'today', url: urlFilter, urlMatchType })
+              .catch(() => ({ data: [] })),
+            // 4. devices: デバイスデータ
+            fetchGA4({ type: 'devices', startDate: dateRange, endDate: 'today', url: urlFilter, urlMatchType })
+              .catch(() => ({ data: [] })),
+          ];
+
+          // 企業データ（どこどこJP）は引き続き取得
           // 各URLごとに企業データを取得（前方一致=カテゴリ用）
           const urlPrefixPromises = targetUrls.map(urlItem =>
             fetchGA4({ type: 'companies', startDate: dateRange, endDate: 'today', url: urlItem.url, urlMatchType: 'prefix' })
@@ -714,46 +795,43 @@
               .catch(() => ({ urlItem, companies: [], matchType: 'exact' }))
           );
 
-          // 子ページデータを取得（前方一致で配下のページを全取得）
+          // 子ページデータを取得
           const subpagePromises = targetUrls.map(urlItem =>
             fetchGA4({ type: 'subpages', startDate: dateRange, endDate: 'today', url: urlItem.url })
               .then(res => ({ parentUrl: urlItem.url, pages: res.data?.pages || [] }))
               .catch(() => ({ parentUrl: urlItem.url, pages: [] }))
           );
 
-          // 子ページ用のデータ取得（各子ページごとに完全一致で取得）
-          // ※ 子ページ一覧取得後に動的に取得
-
-          const [prefixResults, exactResults, subpageResults] = await Promise.all([
+          const [ga4Results, prefixResults, exactResults, subpageResults] = await Promise.all([
+            Promise.all(ga4Promises),
             Promise.all(urlPrefixPromises),
             Promise.all(urlExactPromises),
             Promise.all(subpagePromises),
           ]);
 
+          // GA4データをセット
+          const [overviewRes, trendRes, regionsRes, devicesRes] = ga4Results;
+          setGa4Metrics(overviewRes.data || { pageViews: 0, sessions: 0, activeUsers: 0, avgSessionDuration: 0 });
+          setDailyTrendData(trendRes.data || []);
+          setRegionData(regionsRes.data || []);
+          setDeviceData(devicesRes.data || []);
+
           // 子ページデータをオブジェクトに変換
           const subpagesObj = {};
           const expandState = {};
           subpageResults.forEach(({ parentUrl, pages }) => {
-            // 重複除去用Set
             const seenPaths = new Set();
-            // 親URLの末尾セグメントを取得（重複チェック用）
             const parentSegment = parentUrl.split('/').filter(s => s).pop();
 
             subpagesObj[parentUrl] = pages.filter(p => {
-              // 親URL自身を除外
               if (p.path === parentUrl) return false;
-              // 親URLで始まらないものを除外
               if (!p.path.startsWith(parentUrl)) return false;
-              // /preview を含むものを除外
               if (p.path.includes('/preview')) return false;
-              // 重複を除外
               if (seenPaths.has(p.path)) return false;
               seenPaths.add(p.path);
-              // 親URLの直下の子ページのみ（孫ページは除外）
               const relativePath = p.path.slice(parentUrl.length);
               const segments = relativePath.split('/').filter(s => s);
               if (segments.length !== 1) return false;
-              // 親URLと同じ名前の子ページは除外（/microscope/microscope など）
               if (segments[0] === parentSegment) return false;
               return true;
             });
@@ -781,15 +859,13 @@
 
           const subpageExactResults = await Promise.all(subpageExactPromises);
 
-          // データをまとめる
-          // allCompaniesData: { urlItem, companiesPrefix, companiesExact }
+          // 企業データをまとめる
           const combinedData = targetUrls.map((urlItem, idx) => ({
             urlItem,
             companiesPrefix: prefixResults[idx]?.companies || [],
             companiesExact: exactResults[idx]?.companies || [],
           }));
 
-          // 子ページデータも保存
           const subpageCompaniesObj = {};
           subpageExactResults.forEach(({ parentUrl, path, companies }) => {
             if (!subpageCompaniesObj[parentUrl]) subpageCompaniesObj[parentUrl] = {};
@@ -798,42 +874,18 @@
 
           setAllCompaniesData({ combined: combinedData, subpages: subpageCompaniesObj });
 
-          // 全URL合計の指標を計算（前方一致データの合算、重複企業を考慮）
-          const companyMap = new Map();
-          combinedData.forEach(({ companiesPrefix }) => {
-            companiesPrefix.forEach(company => {
-              const key = company.name || '不明';
-              if (companyMap.has(key)) {
-                const existing = companyMap.get(key);
-                existing.sessions += company.sessions || 0;
-                existing.pageViews += company.pageViews || 0;
-              } else {
-                companyMap.set(key, { ...company });
-              }
-            });
-          });
-
-          const totalCompanies = Array.from(companyMap.values());
-          const totalPV = totalCompanies.reduce((sum, c) => sum + (c.pageViews || 0), 0);
-          const totalSessions = totalCompanies.reduce((sum, c) => sum + (c.sessions || 0), 0);
-          const totalUsers = totalCompanies.reduce((sum, c) => sum + (c.activeUsers || 0), 0);
-
-          setMetrics({
-            pageViews: totalPV,
-            activeUsers: totalUsers,
-            sessions: totalSessions,
-            avgSessionDuration: 0,
-          });
-
         } catch (err) {
           console.error('Data load error:', err);
-          setMetrics({ pageViews: 0, activeUsers: 0, sessions: 0, avgSessionDuration: 0 });
+          setGa4Metrics({ pageViews: 0, activeUsers: 0, sessions: 0, avgSessionDuration: 0 });
+          setDailyTrendData([]);
+          setRegionData([]);
+          setDeviceData([]);
           setAllCompaniesData({ combined: [], subpages: {} });
           setSubpagesData({});
         } finally {
           setLoading(false);
         }
-      }, [dateRange, JSON.stringify(targetUrls)]);
+      }, [dateRange, activeItem, JSON.stringify(targetUrls)]);
 
       useEffect(() => { loadData(); }, [loadData]);
 
@@ -916,7 +968,7 @@
       };
       const filteredTargetUrls = getFilteredTargetUrls();
 
-      // 組織除外フィルター適用
+      // 組織除外フィルター適用（どこどこJPの企業リストのみ）
       const companies = getDisplayCompanies();
       const filteredCompanies = companies.filter(company => {
         for (const exc of orgExclusions) {
@@ -927,24 +979,6 @@
         }
         return true;
       });
-
-      // フィルター後のメトリクスを計算
-      const filteredMetrics = {
-        pageViews: filteredCompanies.reduce((sum, c) => sum + (c.pageViews || 0), 0),
-        activeUsers: filteredCompanies.reduce((sum, c) => sum + (c.activeUsers || 0), 0),
-        sessions: filteredCompanies.reduce((sum, c) => sum + (c.sessions || 0), 0),
-      };
-
-      // 地域データ集計
-      const regionData = filteredCompanies.reduce((acc, c) => {
-        if (c.prefecture) acc[c.prefecture] = (acc[c.prefecture] || 0) + c.sessions;
-        return acc;
-      }, {});
-      const totalSessions = Object.values(regionData).reduce((a, b) => a + b, 0) || 1;
-      const regions = Object.entries(regionData)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(([name, pv]) => ({ name, pv, percent: ((pv / totalSessions) * 100).toFixed(1) }));
 
       // 現在のタイトル
       const getTitle = () => {
@@ -1146,17 +1180,17 @@
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-                    <MetricCard title="PV" value={filteredMetrics.pageViews} change={12.5} isPercent={true} loading={loading} />
-                    <MetricCard title="ユーザー数" value={filteredMetrics.activeUsers} change={8.3} isPercent={true} loading={loading} />
-                    <MetricCard title="セッション数" value={filteredMetrics.sessions} change={10.2} isPercent={true} loading={loading} />
-                    <MetricCard title="来場企業数" value={filteredCompanies.length} change={0} isPercent={true} loading={loading} />
+                    <MetricCard title="PV（GA4）" value={ga4Metrics.pageViews} loading={loading} />
+                    <MetricCard title="ユーザー数（GA4）" value={ga4Metrics.activeUsers} loading={loading} />
+                    <MetricCard title="セッション数（GA4）" value={ga4Metrics.sessions} loading={loading} />
+                    <MetricCard title="来場企業数（どこどこJP）" value={filteredCompanies.length} loading={loading} />
                   </div>
 
-                  <div className="mb-5"><TrendChart data={dummyDailyData} /></div>
+                  <div className="mb-5"><TrendChart data={dailyTrendData} loading={loading} /></div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                    <RegionDistribution data={regions.length > 0 ? regions : dummyRegions} loading={loading} />
-                    <DeviceChart data={dummyDevices} />
+                    <RegionDistribution data={regionData} loading={loading} />
+                    <DeviceChart data={deviceData} loading={loading} />
                   </div>
 
                   <div className="mb-5">
