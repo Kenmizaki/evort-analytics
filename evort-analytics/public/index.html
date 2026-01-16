@@ -67,10 +67,10 @@
 
     // ========== 4つのURLカテゴリ ==========
     const URL_CATEGORIES = [
-      { id: 'company-content', label: '企業コンテンツ', icon: '🏢', color: 'blue', description: '企業紹介、製品ページなど' },
-      { id: 'media-content', label: '集客用記事', icon: '📰', color: 'green', description: 'ブログ、SEO記事など' },
-      { id: 'form-content', label: 'フォーム', icon: '📝', color: 'purple', description: '問い合わせ、資料請求など' },
-      { id: 'exclude-content', label: '除外URL', icon: '🚫', color: 'red', description: '計測から除外するURL' },
+      { id: 'company-content', label: '企業コンテンツ', color: 'blue', description: '企業紹介、製品ページなど' },
+      { id: 'media-content', label: '集客用記事', color: 'green', description: 'ブログ、SEO記事など' },
+      { id: 'form-content', label: 'フォーム', color: 'purple', description: '問い合わせ、資料請求など' },
+      { id: 'exclude-content', label: '除外URL', color: 'red', description: '計測から除外するURL' },
     ];
 
     // ========== ローカルストレージ管理 ==========
@@ -503,7 +503,7 @@
                     <label className="block text-xs text-gray-500 mb-1">カテゴリ</label>
                     <select value={newUrlCategory} onChange={e => setNewUrlCategory(e.target.value)}
                       className="w-full px-3 py-2 text-sm border rounded-lg">
-                      {URL_CATEGORIES.map(cat => <option key={cat.id} value={cat.id}>{cat.icon} {cat.label}</option>)}
+                      {URL_CATEGORIES.map(cat => <option key={cat.id} value={cat.id}>{cat.label}</option>)}
                     </select>
                   </div>
                   <div>
@@ -539,7 +539,7 @@
                   <div key={category.id} className={`rounded-xl border ${colors.border} p-4 mb-3`}>
                     <div className="flex items-center justify-between mb-2">
                       <h4 className={`text-sm font-medium ${colors.text} flex items-center gap-2`}>
-                        <span>{category.icon}</span> {category.label}
+                        {category.label}
                         <span className="text-xs bg-white px-2 py-0.5 rounded-full">{urls.length}件</span>
                       </h4>
                     </div>
@@ -734,11 +734,30 @@
           const subpagesObj = {};
           const expandState = {};
           subpageResults.forEach(({ parentUrl, pages }) => {
-            subpagesObj[parentUrl] = pages.filter(p =>
-              p.path !== parentUrl &&
-              p.path.startsWith(parentUrl) &&
-              !p.path.includes('/preview')
-            );
+            // 重複除去用Set
+            const seenPaths = new Set();
+            // 親URLの末尾セグメントを取得（重複チェック用）
+            const parentSegment = parentUrl.split('/').filter(s => s).pop();
+
+            subpagesObj[parentUrl] = pages.filter(p => {
+              // 親URL自身を除外
+              if (p.path === parentUrl) return false;
+              // 親URLで始まらないものを除外
+              if (!p.path.startsWith(parentUrl)) return false;
+              // /preview を含むものを除外
+              if (p.path.includes('/preview')) return false;
+              // 重複を除外
+              if (seenPaths.has(p.path)) return false;
+              seenPaths.add(p.path);
+              // 親URLの直下の子ページのみ（孫ページは除外）
+              const relativePath = p.path.slice(parentUrl.length);
+              const segments = relativePath.split('/').filter(s => s);
+              if (segments.length !== 1) return false;
+              // 親URLと同じ名前の子ページは除外（/microscope/microscope など）
+              if (segments[0] === parentSegment) return false;
+              return true;
+            });
+
             targetUrls.forEach(u => {
               if (u.url === parentUrl && subpagesObj[parentUrl].length > 0) {
                 expandState[u.id] = true;
@@ -984,13 +1003,13 @@
               {/* ダッシュボード */}
               <button className={`w-full flex items-center px-3 py-2 rounded-lg text-left text-sm mb-1 ${activeItem === 'dashboard' ? 'bg-primary-50 text-primary-600' : 'text-gray-700 hover:bg-gray-50'}`}
                 onClick={() => setActiveItem('dashboard')}>
-                <span className="mr-2">📊</span><span className="font-medium">ダッシュボード</span>
+                <span className="font-medium">ダッシュボード</span>
               </button>
 
               {/* 設定編集 */}
               <button onClick={onEdit}
                 className="w-full flex items-center px-3 py-2 rounded-lg text-left text-sm mb-3 text-gray-700 hover:bg-gray-50">
-                <span className="mr-2">⚙️</span><span className="font-medium">設定を編集</span>
+                <span className="font-medium">設定を編集</span>
               </button>
 
               <div className="border-t border-gray-100 pt-3 mb-2">
@@ -1010,7 +1029,6 @@
                       onClick={() => setActiveItem(category.id)}
                       disabled={!hasUrls}
                     >
-                      <span>{category.icon}</span>
                       <span className="font-medium">{category.label}</span>
                       {hasUrls && <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded-full">{urls.length}</span>}
                     </button>
@@ -1111,7 +1129,6 @@
 
               {targetUrls.length === 0 ? (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
-                  <div className="text-6xl mb-4">📋</div>
                   <p className="text-gray-600 mb-2 font-medium">計測対象のURLが設定されていません</p>
                   <p className="text-sm text-gray-400 mb-4">「設定を編集」からURLを追加してください</p>
                   <button onClick={onEdit} className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">
@@ -1122,7 +1139,7 @@
                 <>
                   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
                     <p className="text-sm text-blue-700">
-                      <span className="font-medium">📊 計測対象:</span> {filteredTargetUrls.length}件のURL
+                      <span className="font-medium">計測対象:</span> {filteredTargetUrls.length}件のURL
                       {activeFilter.type !== 'all' && <span className="text-blue-500">（全体: {targetUrls.length}件）</span>}
                       {excludeUrls.length > 0 && <span className="ml-2 text-blue-500">（除外: {excludeUrls.length}件）</span>}
                     </p>
