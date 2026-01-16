@@ -1,8 +1,0 @@
-{
-  "name": "evort-analytics-api",
-  "version": "1.0.0",
-  "description": "evort Analytics API with GA4 integration",
-  "dependencies": {
-    "@google-analytics/data": "^4.0.0"
-  }
-}
