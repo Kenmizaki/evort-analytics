@@ -36,6 +36,7 @@ exports.handler = async (event) => {
 
     // 追加フィルターパラメータ
     const urlFilter = params.url || null;
+    const urlMatchType = params.urlMatchType || 'contains'; // 'exact', 'prefix', 'contains'
     const prefectureFilter = params.prefecture || null;
     const industryFilter = params.industry || null;
     const employeesFilter = params.employees || null;
@@ -47,6 +48,7 @@ exports.handler = async (event) => {
       case 'companies':
         response = await getCompaniesReport(startDate, endDate, {
           urlFilter,
+          urlMatchType,
           prefectureFilter,
           industryFilter,
           employeesFilter,
@@ -115,16 +117,23 @@ async function getOverviewReport(startDate, endDate) {
 
 // 企業別レポート（どこどこJPカスタムディメンション使用）
 async function getCompaniesReport(startDate, endDate, filters = {}) {
-  const { urlFilter, prefectureFilter, industryFilter, employeesFilter } = filters;
+  const { urlFilter, urlMatchType, prefectureFilter, industryFilter, employeesFilter } = filters;
 
   // フィルター条件を構築
   const dimensionFilters = [];
 
   if (urlFilter) {
+    // urlMatchType: 'exact' = 完全一致, 'prefix' = 前方一致, 'contains' = 含む
+    let gaMatchType = 'CONTAINS';
+    if (urlMatchType === 'exact') {
+      gaMatchType = 'EXACT';
+    } else if (urlMatchType === 'prefix') {
+      gaMatchType = 'BEGINS_WITH';
+    }
     dimensionFilters.push({
       filter: {
         fieldName: 'pagePath',
-        stringFilter: { value: urlFilter, matchType: 'CONTAINS' },
+        stringFilter: { value: urlFilter, matchType: gaMatchType },
       },
     });
   }
