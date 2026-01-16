@@ -762,6 +762,19 @@
         return Array.from(companyMap.values());
       };
 
+      // 現在のフィルターに応じた対象URL数を取得
+      const getFilteredTargetUrls = () => {
+        if (activeFilter.type === 'all') return targetUrls;
+        if (activeFilter.type === 'category') {
+          return targetUrls.filter(u => u.category === activeFilter.categoryId);
+        }
+        if (activeFilter.type === 'url') {
+          return targetUrls.filter(u => u.url === activeFilter.url);
+        }
+        return targetUrls;
+      };
+      const filteredTargetUrls = getFilteredTargetUrls();
+
       // 組織除外フィルター適用
       const companies = getDisplayCompanies();
       const filteredCompanies = companies.filter(company => {
@@ -773,6 +786,13 @@
         }
         return true;
       });
+
+      // フィルター後のメトリクスを計算
+      const filteredMetrics = {
+        pageViews: filteredCompanies.reduce((sum, c) => sum + (c.pageViews || 0), 0),
+        activeUsers: filteredCompanies.reduce((sum, c) => sum + (c.activeUsers || 0), 0),
+        sessions: filteredCompanies.reduce((sum, c) => sum + (c.sessions || 0), 0),
+      };
 
       // 地域データ集計
       const regionData = filteredCompanies.reduce((acc, c) => {
@@ -916,15 +936,16 @@
 
                   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
                     <p className="text-sm text-blue-700">
-                      <span className="font-medium">📊 計測対象:</span> {targetUrls.length}件のURLが設定されています
+                      <span className="font-medium">📊 計測対象:</span> {filteredTargetUrls.length}件のURL
+                      {activeFilter.type !== 'all' && <span className="text-blue-500">（全体: {targetUrls.length}件）</span>}
                       {excludeUrls.length > 0 && <span className="ml-2 text-blue-500">（除外: {excludeUrls.length}件）</span>}
                     </p>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-                    <MetricCard title="PV" value={metrics?.pageViews || 0} change={12.5} isPercent={true} loading={loading} />
-                    <MetricCard title="ユーザー数" value={metrics?.activeUsers || 0} change={8.3} isPercent={true} loading={loading} />
-                    <MetricCard title="セッション数" value={metrics?.sessions || 0} change={10.2} isPercent={true} loading={loading} />
+                    <MetricCard title="PV" value={filteredMetrics.pageViews} change={12.5} isPercent={true} loading={loading} />
+                    <MetricCard title="ユーザー数" value={filteredMetrics.activeUsers} change={8.3} isPercent={true} loading={loading} />
+                    <MetricCard title="セッション数" value={filteredMetrics.sessions} change={10.2} isPercent={true} loading={loading} />
                     <MetricCard title="来場企業数" value={filteredCompanies.length} change={0} isPercent={true} loading={loading} />
                   </div>
 
