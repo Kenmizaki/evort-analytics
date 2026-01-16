@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>evort アナリティクス - 斉藤光学</title>
+  <title>evort Analytics</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -16,16 +16,8 @@
         extend: {
           colors: {
             primary: {
-              50: '#f5f3ff',
-              100: '#ede9fe',
-              200: '#ddd6fe',
-              300: '#c4b5fd',
-              400: '#a78bfa',
-              500: '#8b5cf6',
-              600: '#7c3aed',
-              700: '#6d28d9',
-              800: '#5b21b6',
-              900: '#4c1d95',
+              50: '#f5f3ff', 100: '#ede9fe', 200: '#ddd6fe', 300: '#c4b5fd', 400: '#a78bfa',
+              500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9', 800: '#5b21b6', 900: '#4c1d95',
             }
           }
         }
@@ -34,10 +26,8 @@
   </script>
   <style>
     body { font-family: 'Noto Sans JP', sans-serif; background: #f8f7fc; }
-    .sidebar-fixed { width: 260px; min-width: 260px; }
-    @media (max-width: 1024px) {
-      .sidebar-fixed { display: none; }
-    }
+    .sidebar-fixed { width: 280px; min-width: 280px; }
+    @media (max-width: 1024px) { .sidebar-fixed { display: none; } }
     .loading-pulse { animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
     .live-dot { animation: live-pulse 2s ease-in-out infinite; }
@@ -67,34 +57,37 @@
     }
 
     // ========== フォールバック用ダミーデータ ==========
-    const dummyMetrics = { pv: 1847, pvChange: 12.5, users: 892, usersChange: 8.3, formTransitions: 23, formTransitionsChange: 4, formTransitionRate: 1.24, formTransitionRateChange: 0.15 };
+    const dummyMetrics = { pv: 1847, users: 892 };
     const dummyDailyData = Array.from({ length: 31 }, (_, i) => ({ date: `12/${i + 1}`, pv: Math.floor(Math.random() * 60) + 30, transitions: Math.floor(Math.random() * 4) }));
     const dummyRegions = [
       { name: 'Tokyo', pv: 423, percent: 22.9 }, { name: 'Osaka', pv: 287, percent: 15.5 }, { name: 'Aichi', pv: 198, percent: 10.7 },
-      { name: 'Kanagawa', pv: 156, percent: 8.4 }, { name: 'Fukuoka', pv: 134, percent: 7.3 }, { name: 'Hyogo', pv: 98, percent: 5.3 },
-      { name: 'Saitama', pv: 87, percent: 4.7 }, { name: 'Chiba', pv: 76, percent: 4.1 }, { name: 'Shizuoka', pv: 65, percent: 3.5 }, { name: 'Hiroshima', pv: 54, percent: 2.9 }
+      { name: 'Kanagawa', pv: 156, percent: 8.4 }, { name: 'Fukuoka', pv: 134, percent: 7.3 }
     ];
     const dummyDevices = [{ name: 'PC', value: 68, color: '#8b5cf6' }, { name: 'Mobile', value: 29, color: '#22c55e' }, { name: 'Tablet', value: 3, color: '#94a3b8' }];
 
-    // ナビゲーション構造
-    const navigation = [
-      { id: 'dashboard', label: 'ダッシュボード', icon: '📊', children: null },
-      { id: 'url-filter', label: 'URLフィルター', icon: '🔗', children: null },
-      { id: 'org-filter', label: '組織除外設定', icon: '🏢', children: null },
-      { id: 'company', label: '企業コンテンツ', icon: '📁', children: [
-        { id: 'presentation', label: 'プレゼンテーション' }, { id: 'topic1', label: 'USBマイクロスコープ' },
-        { id: 'topic2', label: 'HDMIマイクロスコープ' }, { id: 'presenter', label: 'プレゼンター' }
-      ]},
-      { id: 'media', label: '集客用記事', icon: '📁', children: [
-        { id: 'pillar', label: '工業用マイクロスコープ' }, { id: 'cluster1', label: '検査用顕微鏡' },
-        { id: 'cluster2', label: '顕微鏡 倍率' }, { id: 'cluster3', label: 'マイクロスコープ 価格' }
-      ]},
-      { id: 'form', label: 'フォーム', icon: '📁', children: [
-        { id: 'contact', label: '問い合わせフォーム' }, { id: 'download', label: '資料DLフォーム' }
-      ]}
+    // ========== 4つのURLカテゴリ ==========
+    const URL_CATEGORIES = [
+      { id: 'company-content', label: '企業コンテンツ', icon: '🏢', color: 'blue', description: '企業紹介、製品ページなど' },
+      { id: 'media-content', label: '集客用記事', icon: '📰', color: 'green', description: 'ブログ、SEO記事など' },
+      { id: 'form-content', label: 'フォーム', icon: '📝', color: 'purple', description: '問い合わせ、資料請求など' },
+      { id: 'exclude-content', label: '除外URL', icon: '🚫', color: 'red', description: '計測から除外するURL' },
     ];
 
-    // ========== コンポーネント ==========
+    // ========== ローカルストレージ管理 ==========
+    const STORAGE_KEY = 'evort_analytics_projects';
+
+    function loadProjects() {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        return data ? JSON.parse(data) : [];
+      } catch { return []; }
+    }
+
+    function saveProjects(projects) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+    }
+
+    // ========== 共通コンポーネント ==========
 
     // 指標カード
     function MetricCard({ title, value, change, suffix = '', isPercent = false, loading = false }) {
@@ -131,18 +124,11 @@
       );
       return (
         <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 mb-5 text-white">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 bg-white rounded-full live-dot"></div>
-              <span className="text-sm font-medium">リアルタイム</span>
-              <span className="text-3xl font-bold">{data?.totalActiveUsers || 0}</span>
-              <span className="text-green-100">人がアクセス中</span>
-            </div>
-            {data?.companies?.length > 0 && (
-              <div className="text-sm text-green-100">
-                閲覧中: {data.companies.slice(0, 3).map(c => c.name).join(', ')}
-              </div>
-            )}
+          <div className="flex items-center gap-3">
+            <div className="w-3 h-3 bg-white rounded-full live-dot"></div>
+            <span className="text-sm font-medium">リアルタイム</span>
+            <span className="text-3xl font-bold">{data?.totalActiveUsers || 0}</span>
+            <span className="text-green-100">人がアクセス中</span>
           </div>
         </div>
       );
@@ -168,25 +154,20 @@
             datasets: [{
               label: 'PV', data: data.map(d => d.pv), fill: true, backgroundColor: pvGradient,
               borderColor: 'rgba(99, 102, 241, 0.8)', borderWidth: 2, tension: 0.4, pointRadius: 0,
-              pointHoverRadius: 6, pointHoverBackgroundColor: '#fff', pointHoverBorderColor: 'rgba(99, 102, 241, 1)',
-              pointHoverBorderWidth: 2, yAxisID: 'y', order: 2
+              yAxisID: 'y', order: 2
             }, {
               label: 'フォーム遷移数', data: data.map(d => d.transitions), fill: false, borderColor: '#f97316',
-              backgroundColor: '#f97316', borderWidth: 2, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#fff',
-              pointBorderColor: '#f97316', pointBorderWidth: 2, pointHoverRadius: 6, yAxisID: 'y1', order: 1
+              borderWidth: 2, tension: 0.3, pointRadius: 3, yAxisID: 'y1', order: 1
             }]
           },
           options: {
             responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
             scales: {
-              y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'PV', font: { size: 10 }, color: '#94a3b8' }, grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 9 } }, beginAtZero: true },
-              y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'フォーム遷移数', font: { size: 10 }, color: '#94a3b8' }, grid: { drawOnChartArea: false }, min: 0, max: 6, ticks: { color: '#94a3b8', font: { size: 9 } } },
-              x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 8 }, maxRotation: 0 } }
+              y: { type: 'linear', display: true, position: 'left', grid: { color: '#f1f5f9' }, beginAtZero: true },
+              y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, min: 0, max: 6 },
+              x: { grid: { display: false } }
             },
-            plugins: {
-              legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, padding: 15 } },
-              tooltip: { backgroundColor: 'rgba(255, 255, 255, 0.95)', titleColor: '#374151', bodyColor: '#374151', borderColor: '#e5e7eb', borderWidth: 1, cornerRadius: 8, padding: 12 }
-            }
+            plugins: { legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true } } }
           }
         });
         return () => { if (chartInstance.current) chartInstance.current.destroy(); };
@@ -204,18 +185,17 @@
     function RegionDistribution({ data, loading }) {
       if (loading) return (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
-          <h3 className="text-sm font-medium text-gray-700 mb-4">地域分布（上位10）</h3>
-          <div className="space-y-2">{Array(10).fill(0).map((_, i) => <div key={i} className="h-4 bg-gray-200 rounded loading-pulse"></div>)}</div>
+          <div className="space-y-2">{Array(5).fill(0).map((_, i) => <div key={i} className="h-4 bg-gray-200 rounded loading-pulse"></div>)}</div>
         </div>
       );
       return (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
-          <h3 className="text-sm font-medium text-gray-700 mb-4">地域分布（上位10）</h3>
+          <h3 className="text-sm font-medium text-gray-700 mb-4">地域分布（上位5）</h3>
           <div className="space-y-2">
-            {data.map((region, index) => (
+            {data.slice(0, 5).map((region, index) => (
               <div key={region.name} className="flex items-center justify-between text-xs">
                 <div className="flex items-center"><span className="text-gray-400 w-5">{index + 1}.</span><span className="text-gray-700">{region.name}</span></div>
-                <div className="flex items-center gap-3"><span className="text-gray-600">{region.pv}</span><span className="text-gray-400 w-10 text-right">{region.percent}%</span></div>
+                <div className="flex items-center gap-3"><span className="text-gray-600">{region.pv}</span><span className="text-gray-400">{region.percent}%</span></div>
               </div>
             ))}
           </div>
@@ -243,12 +223,12 @@
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 h-full">
           <h3 className="text-sm font-medium text-gray-700 mb-4">デバイス</h3>
           <div className="flex items-center gap-6">
-            <div style={{ width: '100px', height: '100px' }}><canvas ref={chartRef}></canvas></div>
+            <div style={{ width: '80px', height: '80px' }}><canvas ref={chartRef}></canvas></div>
             <div className="flex-1 space-y-2">
               {data.map((item, i) => (
                 <div key={i} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div><span className="text-gray-700">{item.name}</span></div>
-                  <span className="text-gray-600 font-medium">{item.value}%</span>
+                  <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div><span>{item.name}</span></div>
+                  <span className="font-medium">{item.value}%</span>
                 </div>
               ))}
             </div>
@@ -257,47 +237,13 @@
       );
     }
 
-    // 来場組織リスト（実データ対応 + フィルター機能強化）
-    function OrganizationList({ companies, loading, onFilterChange, apiFilters = {} }) {
+    // 来場組織リスト
+    function OrganizationList({ companies, loading }) {
       const [sortConfig, setSortConfig] = useState({ key: 'sessions', direction: 'desc' });
       const [searchTerm, setSearchTerm] = useState('');
-      const [industryFilter, setIndustryFilter] = useState('');
-      const [prefectureFilter, setPrefectureFilter] = useState('');
-      const [employeesFilter, setEmployeesFilter] = useState('');
-      const [urlFilter, setUrlFilter] = useState('');
-      const [showFilters, setShowFilters] = useState(false);
 
       const handleSort = (key) => {
         setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
-      };
-
-      const getSortIcon = (key) => {
-        if (sortConfig.key !== key) return '↕';
-        return sortConfig.direction === 'asc' ? '↑' : '↓';
-      };
-
-      // APIフィルター適用
-      const applyApiFilters = () => {
-        if (onFilterChange) {
-          onFilterChange({
-            url: urlFilter || null,
-            prefecture: prefectureFilter || null,
-            industry: industryFilter || null,
-            employees: employeesFilter || null,
-          });
-        }
-      };
-
-      // フィルタークリア
-      const clearFilters = () => {
-        setSearchTerm('');
-        setIndustryFilter('');
-        setPrefectureFilter('');
-        setEmployeesFilter('');
-        setUrlFilter('');
-        if (onFilterChange) {
-          onFilterChange({});
-        }
       };
 
       const sortedData = [...companies].sort((a, b) => {
@@ -306,21 +252,12 @@
         const modifier = sortConfig.direction === 'asc' ? 1 : -1;
         if (typeof aVal === 'number') return (aVal - bVal) * modifier;
         return String(aVal || '').localeCompare(String(bVal || '')) * modifier;
-      }).filter(c => {
-        const matchSearch = !searchTerm || c.name?.toLowerCase().includes(searchTerm.toLowerCase());
-        return matchSearch;
-      });
-
-      const industries = [...new Set(companies.map(c => c.industry).filter(Boolean))].sort();
-      const prefectures = [...new Set(companies.map(c => c.prefecture).filter(Boolean))].sort();
-      const employeeRanges = [...new Set(companies.map(c => c.employees).filter(Boolean))].sort();
+      }).filter(c => !searchTerm || c.name?.toLowerCase().includes(searchTerm.toLowerCase()));
 
       const columns = [
-        { key: 'name', label: '組織名' }, { key: 'prefecture', label: '都道府県' }, { key: 'employees', label: '従業員数' },
+        { key: 'name', label: '組織名' }, { key: 'prefecture', label: '都道府県' },
         { key: 'industry', label: '業種' }, { key: 'sessions', label: 'セッション' }, { key: 'pageViews', label: 'PV' }
       ];
-
-      const hasActiveFilters = urlFilter || prefectureFilter || industryFilter || employeesFilter;
 
       if (loading) return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-10">
@@ -330,462 +267,384 @@
 
       return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          {/* フィルターセクション */}
-          <div className="p-4 border-b border-gray-100">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <input type="text" placeholder="企業名で検索..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                  className="px-3 py-1.5 text-xs border rounded-lg w-48 focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
-                <button onClick={() => setShowFilters(!showFilters)}
-                  className={`px-3 py-1.5 text-xs rounded-lg border flex items-center gap-1 ${showFilters || hasActiveFilters ? 'bg-primary-50 border-primary-300 text-primary-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                  <span>🔍</span> 詳細フィルター {hasActiveFilters && <span className="bg-primary-600 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center">!</span>}
-                </button>
-              </div>
-              <div className="text-xs text-gray-500">{sortedData.length} 件の企業</div>
-            </div>
-
-            {/* 詳細フィルター（展開時） */}
-            {showFilters && (
-              <div className="bg-gray-50 rounded-lg p-4 mt-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {/* URLフィルター */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">📄 閲覧ページURL</label>
-                    <input type="text" placeholder="/product/microscope..." value={urlFilter} onChange={e => setUrlFilter(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
-                    <p className="text-[10px] text-gray-400 mt-1">部分一致で検索</p>
-                  </div>
-
-                  {/* 都道府県フィルター */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">📍 都道府県</label>
-                    <select value={prefectureFilter} onChange={e => setPrefectureFilter(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                      <option value="">すべての地域</option>
-                      {prefectures.map(pref => <option key={pref} value={pref}>{pref}</option>)}
-                    </select>
-                  </div>
-
-                  {/* 業種フィルター */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">🏭 業種</label>
-                    <select value={industryFilter} onChange={e => setIndustryFilter(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                      <option value="">すべての業種</option>
-                      {industries.map(ind => <option key={ind} value={ind}>{ind}</option>)}
-                    </select>
-                  </div>
-
-                  {/* 従業員数フィルター */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">👥 従業員数</label>
-                    <select value={employeesFilter} onChange={e => setEmployeesFilter(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                      <option value="">すべての規模</option>
-                      {employeeRanges.map(emp => <option key={emp} value={emp}>{emp}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                {/* フィルターアクション */}
-                <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-200">
-                  <button onClick={clearFilters}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100">
-                    クリア
-                  </button>
-                  <button onClick={applyApiFilters}
-                    className="px-4 py-1.5 text-xs rounded-lg bg-primary-600 text-white hover:bg-primary-700 font-medium">
-                    フィルター適用
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* アクティブフィルター表示 */}
-            {hasActiveFilters && !showFilters && (
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <span className="text-xs text-gray-500">適用中:</span>
-                {urlFilter && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">URL: {urlFilter}</span>}
-                {prefectureFilter && <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">{prefectureFilter}</span>}
-                {industryFilter && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">{industryFilter}</span>}
-                {employeesFilter && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">{employeesFilter}</span>}
-                <button onClick={clearFilters} className="text-xs text-red-600 hover:text-red-700 ml-2">✕ クリア</button>
-              </div>
-            )}
+          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+            <input type="text" placeholder="企業名で検索..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+              className="px-3 py-1.5 text-xs border rounded-lg w-48 focus:ring-2 focus:ring-primary-500" />
+            <div className="text-xs text-gray-500">{sortedData.length} 件</div>
           </div>
-
-          {/* テーブル */}
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-primary-600 text-white">
                   {columns.map(col => (
-                    <th key={col.key} className="px-3 py-2 text-left font-medium cursor-pointer hover:bg-primary-700 whitespace-nowrap" onClick={() => handleSort(col.key)}>
-                      {col.label} <span className="text-primary-300 ml-1">{getSortIcon(col.key)}</span>
+                    <th key={col.key} className="px-3 py-2 text-left font-medium cursor-pointer hover:bg-primary-700" onClick={() => handleSort(col.key)}>
+                      {col.label}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {sortedData.length === 0 ? (
-                  <tr><td colSpan={columns.length} className="px-3 py-8 text-center text-gray-400">該当する企業がありません</td></tr>
-                ) : sortedData.slice(0, 50).map((row, index) => (
-                  <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-primary-50 cursor-pointer`}>
-                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap font-medium">{row.name || '不明'}</td>
-                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{row.prefecture || '-'}</td>
-                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{row.employees || '-'}</td>
-                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{row.industry || '-'}</td>
-                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap text-right font-medium">{row.sessions?.toLocaleString() || 0}</td>
-                    <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap text-right">{row.pageViews?.toLocaleString() || 0}</td>
+                {sortedData.slice(0, 30).map((row, index) => (
+                  <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-primary-50`}>
+                    <td className="px-3 py-1.5 font-medium">{row.name || '不明'}</td>
+                    <td className="px-3 py-1.5">{row.prefecture || '-'}</td>
+                    <td className="px-3 py-1.5">{row.industry || '-'}</td>
+                    <td className="px-3 py-1.5 text-right font-medium">{row.sessions?.toLocaleString() || 0}</td>
+                    <td className="px-3 py-1.5 text-right">{row.pageViews?.toLocaleString() || 0}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {sortedData.length > 50 && (
-            <div className="p-3 text-center text-xs text-gray-500 border-t border-gray-100">
-              上位50件を表示中（全{sortedData.length}件）
-            </div>
-          )}
         </div>
       );
     }
 
-    // URLフィルター設定ページ
-    function UrlFilterPage({ urlFilters, setUrlFilters }) {
-      const [newUrl, setNewUrl] = useState('');
-      const [matchType, setMatchType] = useState('prefix'); // 'exact' or 'prefix'
-      const [filterType, setFilterType] = useState('include'); // 'include' or 'exclude'
-
-      const addFilter = () => {
-        if (!newUrl.trim()) return;
-        const newFilter = {
-          id: Date.now(),
-          url: newUrl.trim(),
-          matchType,
-          filterType,
-        };
-        setUrlFilters([...urlFilters, newFilter]);
-        setNewUrl('');
-      };
-
-      const removeFilter = (id) => {
-        setUrlFilters(urlFilters.filter(f => f.id !== id));
-      };
-
-      const includeFilters = urlFilters.filter(f => f.filterType === 'include');
-      const excludeFilters = urlFilters.filter(f => f.filterType === 'exclude');
-
+    // ========== トップページ ==========
+    function TopPage({ projects, onCreateNew, onSelectProject, onDeleteProject }) {
       return (
-        <div className="p-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-2">URLフィルター設定</h2>
-          <p className="text-sm text-gray-500 mb-6">特定のURLを閲覧した企業のみを表示、または除外します</p>
-
-          {/* フィルター追加フォーム */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-            <h3 className="text-sm font-medium text-gray-700 mb-4">新しいフィルターを追加</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">URL パス</label>
-                <input type="text" value={newUrl} onChange={e => setNewUrl(e.target.value)}
-                  placeholder="/products/microscope"
-                  className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">マッチタイプ</label>
-                <select value={matchType} onChange={e => setMatchType(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                  <option value="prefix">前方一致（ディレクトリ以下全部）</option>
-                  <option value="exact">完全一致</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">フィルタータイプ</label>
-                <select value={filterType} onChange={e => setFilterType(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                  <option value="include">含める（このURLを見た企業）</option>
-                  <option value="exclude">除外する</option>
-                </select>
+        <div className="min-h-screen bg-gradient-to-br from-primary-50 to-blue-50">
+          {/* ヘッダー */}
+          <header className="bg-white shadow-sm">
+            <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">E</span>
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold text-gray-800">evort Analytics</h1>
+                  <p className="text-xs text-gray-500">GA4連携アナリティクス管理</p>
+                </div>
               </div>
             </div>
-            <div className="mt-4">
-              <button onClick={addFilter}
-                className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 font-medium">
-                + フィルターを追加
+          </header>
+
+          {/* メインコンテンツ */}
+          <main className="max-w-6xl mx-auto px-6 py-10">
+            {/* 新規作成ボタン */}
+            <div className="mb-8">
+              <button onClick={onCreateNew}
+                className="px-6 py-3 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 shadow-lg hover:shadow-xl transition-all flex items-center gap-2">
+                <span className="text-xl">+</span>
+                新規アナリティクス作成
               </button>
             </div>
-          </div>
 
-          {/* 含めるフィルター */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
-            <h3 className="text-sm font-medium text-green-700 mb-3 flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-              含めるURL（このURLを閲覧した企業を表示）
-            </h3>
-            {includeFilters.length === 0 ? (
-              <p className="text-sm text-gray-400">設定なし（すべてのURLを対象）</p>
-            ) : (
-              <div className="space-y-2">
-                {includeFilters.map(filter => (
-                  <div key={filter.id} className="flex items-center justify-between bg-green-50 px-3 py-2 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <code className="text-sm text-green-800 bg-green-100 px-2 py-0.5 rounded">{filter.url}</code>
-                      <span className="text-xs text-green-600">
-                        {filter.matchType === 'exact' ? '完全一致' : '前方一致'}
-                      </span>
+            {/* プロジェクト一覧 */}
+            <div>
+              <h2 className="text-lg font-bold text-gray-800 mb-4">アナリティクス一覧</h2>
+              {projects.length === 0 ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
+                  <div className="text-6xl mb-4">📊</div>
+                  <p className="text-gray-500 mb-2">まだアナリティクスがありません</p>
+                  <p className="text-sm text-gray-400">「新規アナリティクス作成」から始めましょう</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {projects.map(project => (
+                    <div key={project.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <span className="text-primary-600 font-bold text-lg">{project.name.charAt(0)}</span>
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-gray-800">{project.name}</h3>
+                            <p className="text-xs text-gray-400">/{project.slug}</p>
+                          </div>
+                        </div>
+                        <button onClick={() => onDeleteProject(project.id)} className="text-gray-400 hover:text-red-500 text-sm">✕</button>
+                      </div>
+                      <div className="flex items-center gap-2 mb-4 text-xs text-gray-500">
+                        <span>📁 {Object.values(project.urlCategories || {}).flat().length} URL</span>
+                        <span>🚫 {(project.orgExclusions || []).length} 除外</span>
+                      </div>
+                      <button onClick={() => onSelectProject(project)}
+                        className="w-full py-2 bg-primary-50 text-primary-600 rounded-lg text-sm font-medium hover:bg-primary-100 transition-colors">
+                        ダッシュボードを開く →
+                      </button>
                     </div>
-                    <button onClick={() => removeFilter(filter.id)} className="text-red-500 hover:text-red-700 text-sm">✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 除外フィルター */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h3 className="text-sm font-medium text-red-700 mb-3 flex items-center gap-2">
-              <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-              除外するURL
-            </h3>
-            {excludeFilters.length === 0 ? (
-              <p className="text-sm text-gray-400">設定なし</p>
-            ) : (
-              <div className="space-y-2">
-                {excludeFilters.map(filter => (
-                  <div key={filter.id} className="flex items-center justify-between bg-red-50 px-3 py-2 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <code className="text-sm text-red-800 bg-red-100 px-2 py-0.5 rounded">{filter.url}</code>
-                      <span className="text-xs text-red-600">
-                        {filter.matchType === 'exact' ? '完全一致' : '前方一致'}
-                      </span>
-                    </div>
-                    <button onClick={() => removeFilter(filter.id)} className="text-red-500 hover:text-red-700 text-sm">✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 適用状況 */}
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-800">
-              <strong>現在の設定：</strong>
-              {includeFilters.length > 0 ? ` ${includeFilters.length}件のURLを含める` : ' すべてのURL'}
-              {excludeFilters.length > 0 ? ` / ${excludeFilters.length}件を除外` : ''}
-            </p>
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </main>
         </div>
       );
     }
 
-    // 組織除外設定ページ
-    function OrgFilterPage({ orgExclusions, setOrgExclusions, companies }) {
-      const [exclusionType, setExclusionType] = useState('name'); // 'name', 'industry', 'prefecture', 'employees'
-      const [exclusionValue, setExclusionValue] = useState('');
+    // ========== 新規作成/編集フォーム ==========
+    function ProjectForm({ project, onSave, onCancel }) {
+      const [name, setName] = useState(project?.name || '');
+      const [slug, setSlug] = useState(project?.slug || '');
+      const [urlCategories, setUrlCategories] = useState(project?.urlCategories || {
+        'company-content': [],
+        'media-content': [],
+        'form-content': [],
+        'exclude-content': [],
+      });
+      const [orgExclusions, setOrgExclusions] = useState(project?.orgExclusions || []);
+
+      // URL追加用state
+      const [newUrlCategory, setNewUrlCategory] = useState('company-content');
+      const [newUrlTitle, setNewUrlTitle] = useState('');
+      const [newUrlPath, setNewUrlPath] = useState('');
+      const [newUrlMatchType, setNewUrlMatchType] = useState('prefix');
+
+      // 組織除外用state
+      const [newExclusionType, setNewExclusionType] = useState('name');
+      const [newExclusionValue, setNewExclusionValue] = useState('');
+
+      const isEditing = !!project;
+
+      const addUrl = () => {
+        if (!newUrlTitle.trim() || !newUrlPath.trim()) return;
+        const newItem = { id: Date.now(), title: newUrlTitle.trim(), url: newUrlPath.trim(), matchType: newUrlMatchType };
+        setUrlCategories({
+          ...urlCategories,
+          [newUrlCategory]: [...(urlCategories[newUrlCategory] || []), newItem]
+        });
+        setNewUrlTitle('');
+        setNewUrlPath('');
+      };
+
+      const removeUrl = (categoryId, urlId) => {
+        setUrlCategories({
+          ...urlCategories,
+          [categoryId]: urlCategories[categoryId].filter(u => u.id !== urlId)
+        });
+      };
 
       const addExclusion = () => {
-        if (!exclusionValue.trim()) return;
-        const newExclusion = {
-          id: Date.now(),
-          type: exclusionType,
-          value: exclusionValue.trim(),
-        };
-        setOrgExclusions([...orgExclusions, newExclusion]);
-        setExclusionValue('');
+        if (!newExclusionValue.trim()) return;
+        const newExc = { id: Date.now(), type: newExclusionType, value: newExclusionValue.trim() };
+        setOrgExclusions([...orgExclusions, newExc]);
+        setNewExclusionValue('');
       };
 
       const removeExclusion = (id) => {
         setOrgExclusions(orgExclusions.filter(e => e.id !== id));
       };
 
-      const typeLabels = {
-        name: '組織名',
-        industry: '業種',
-        prefecture: '都道府県',
-        employees: '従業員数',
-      };
-
-      // 選択肢の取得
-      const getOptions = () => {
-        switch (exclusionType) {
-          case 'name':
-            return [...new Set(companies.map(c => c.name).filter(Boolean))].sort();
-          case 'industry':
-            return [...new Set(companies.map(c => c.industry).filter(Boolean))].sort();
-          case 'prefecture':
-            return [...new Set(companies.map(c => c.prefecture).filter(Boolean))].sort();
-          case 'employees':
-            return [...new Set(companies.map(c => c.employees).filter(Boolean))].sort();
-          default:
-            return [];
+      const handleSave = () => {
+        if (!name.trim() || !slug.trim()) {
+          alert('アナリティクス名とslugは必須です');
+          return;
         }
+        const projectData = {
+          id: project?.id || Date.now(),
+          name: name.trim(),
+          slug: slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+          urlCategories,
+          orgExclusions,
+          createdAt: project?.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        onSave(projectData);
       };
 
-      const groupedExclusions = {
-        name: orgExclusions.filter(e => e.type === 'name'),
-        industry: orgExclusions.filter(e => e.type === 'industry'),
-        prefecture: orgExclusions.filter(e => e.type === 'prefecture'),
-        employees: orgExclusions.filter(e => e.type === 'employees'),
+      const colorClasses = {
+        blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700' },
+        green: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700' },
+        purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700' },
+        red: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700' },
       };
+
+      const typeLabels = { name: '組織名', industry: '業種', prefecture: '都道府県', employees: '従業員数' };
 
       return (
-        <div className="p-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-2">組織除外設定</h2>
-          <p className="text-sm text-gray-500 mb-6">特定の組織や条件に該当する企業を表示から除外します</p>
-
-          {/* 除外条件追加フォーム */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-            <h3 className="text-sm font-medium text-gray-700 mb-4">新しい除外条件を追加</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">除外条件タイプ</label>
-                <select value={exclusionType} onChange={e => { setExclusionType(e.target.value); setExclusionValue(''); }}
-                  className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                  <option value="name">組織名</option>
-                  <option value="industry">業種</option>
-                  <option value="prefecture">都道府県</option>
-                  <option value="employees">従業員数</option>
-                </select>
+        <div className="min-h-screen bg-gray-50">
+          {/* ヘッダー */}
+          <header className="bg-white shadow-sm sticky top-0 z-10">
+            <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button onClick={onCancel} className="text-gray-500 hover:text-gray-700">← 戻る</button>
+                <h1 className="text-lg font-bold text-gray-800">{isEditing ? 'アナリティクス編集' : '新規アナリティクス作成'}</h1>
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">除外する値</label>
-                {exclusionType === 'name' ? (
-                  <input type="text" value={exclusionValue} onChange={e => setExclusionValue(e.target.value)}
-                    placeholder="組織名を入力..." list="org-names"
-                    className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
-                ) : (
-                  <select value={exclusionValue} onChange={e => setExclusionValue(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                    <option value="">選択してください</option>
-                    {getOptions().map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                  </select>
-                )}
-                <datalist id="org-names">
-                  {getOptions().slice(0, 100).map(opt => <option key={opt} value={opt} />)}
-                </datalist>
-              </div>
-            </div>
-            <div className="mt-4">
-              <button onClick={addExclusion}
-                className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 font-medium">
-                + 除外条件を追加
+              <button onClick={handleSave}
+                className="px-5 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700">
+                {isEditing ? '保存' : '作成'}
               </button>
             </div>
-          </div>
+          </header>
 
-          {/* 除外条件一覧 */}
-          {Object.entries(groupedExclusions).map(([type, exclusions]) => (
-            exclusions.length > 0 && (
-              <div key={type} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
-                <h3 className="text-sm font-medium text-red-700 mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                  {typeLabels[type]}で除外
-                </h3>
+          <main className="max-w-4xl mx-auto px-6 py-8">
+            {/* 基本情報 */}
+            <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">基本情報</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">アナリティクス名 *</label>
+                  <input type="text" value={name} onChange={e => setName(e.target.value)}
+                    placeholder="例：斉藤光学" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Slug（URL用） *</label>
+                  <div className="flex items-center">
+                    <span className="text-gray-400 mr-1">/</span>
+                    <input type="text" value={slug} onChange={e => setSlug(e.target.value)}
+                      placeholder="例：saito-hk" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500" />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">英数字とハイフンのみ使用可能</p>
+                </div>
+              </div>
+            </section>
+
+            {/* URLカテゴリ設定 */}
+            <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">URL設定</h2>
+              <p className="text-sm text-gray-500 mb-6">各カテゴリにURLを追加すると、そのURLを閲覧した企業を分析できます</p>
+
+              {/* URL追加フォーム */}
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">URLを追加</h3>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">カテゴリ</label>
+                    <select value={newUrlCategory} onChange={e => setNewUrlCategory(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border rounded-lg">
+                      {URL_CATEGORIES.map(cat => <option key={cat.id} value={cat.id}>{cat.icon} {cat.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">タイトル</label>
+                    <input type="text" value={newUrlTitle} onChange={e => setNewUrlTitle(e.target.value)}
+                      placeholder="USBマイクロスコープ" className="w-full px-3 py-2 text-sm border rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">URLパス</label>
+                    <input type="text" value={newUrlPath} onChange={e => setNewUrlPath(e.target.value)}
+                      placeholder="/products/usb" className="w-full px-3 py-2 text-sm border rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">マッチ</label>
+                    <select value={newUrlMatchType} onChange={e => setNewUrlMatchType(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border rounded-lg">
+                      <option value="prefix">前方一致</option>
+                      <option value="exact">完全一致</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <button onClick={addUrl} className="w-full px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700">追加</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* カテゴリ別一覧 */}
+              {URL_CATEGORIES.map(category => {
+                const urls = urlCategories[category.id] || [];
+                const colors = colorClasses[category.color];
+                return (
+                  <div key={category.id} className={`rounded-xl border ${colors.border} p-4 mb-3`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className={`text-sm font-medium ${colors.text} flex items-center gap-2`}>
+                        <span>{category.icon}</span> {category.label}
+                        <span className="text-xs bg-white px-2 py-0.5 rounded-full">{urls.length}件</span>
+                      </h4>
+                    </div>
+                    {urls.length === 0 ? (
+                      <p className="text-xs text-gray-400">{category.description}</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {urls.map(item => (
+                          <div key={item.id} className={`flex items-center justify-between ${colors.bg} px-3 py-2 rounded-lg`}>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className={`font-medium ${colors.text}`}>{item.title}</span>
+                              <code className="text-xs bg-white px-2 py-0.5 rounded border">{item.url}</code>
+                              <span className="text-xs text-gray-400">{item.matchType === 'exact' ? '完全一致' : '前方一致'}</span>
+                            </div>
+                            <button onClick={() => removeUrl(category.id, item.id)} className="text-red-400 hover:text-red-600">✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+
+            {/* 組織除外設定 */}
+            <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">組織除外設定</h2>
+              <p className="text-sm text-gray-500 mb-6">特定の組織や条件に該当する企業を表示から除外します</p>
+
+              {/* 除外追加フォーム */}
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">除外条件を追加</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">除外タイプ</label>
+                    <select value={newExclusionType} onChange={e => setNewExclusionType(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border rounded-lg">
+                      <option value="name">組織名</option>
+                      <option value="industry">業種</option>
+                      <option value="prefecture">都道府県</option>
+                      <option value="employees">従業員数</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">除外する値</label>
+                    <input type="text" value={newExclusionValue} onChange={e => setNewExclusionValue(e.target.value)}
+                      placeholder="例：自社名、(not set)" className="w-full px-3 py-2 text-sm border rounded-lg" />
+                  </div>
+                  <div className="flex items-end">
+                    <button onClick={addExclusion} className="w-full px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700">除外追加</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 除外一覧 */}
+              {orgExclusions.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">除外条件は設定されていません</p>
+              ) : (
                 <div className="flex flex-wrap gap-2">
-                  {exclusions.map(exc => (
-                    <span key={exc.id} className="inline-flex items-center gap-1 bg-red-50 text-red-800 px-3 py-1 rounded-full text-sm">
+                  {orgExclusions.map(exc => (
+                    <span key={exc.id} className="inline-flex items-center gap-1 bg-red-50 text-red-700 px-3 py-1 rounded-full text-sm border border-red-200">
+                      <span className="text-xs text-red-400">{typeLabels[exc.type]}:</span>
                       {exc.value}
-                      <button onClick={() => removeExclusion(exc.id)} className="text-red-500 hover:text-red-700 ml-1">✕</button>
+                      <button onClick={() => removeExclusion(exc.id)} className="ml-1 text-red-400 hover:text-red-600">✕</button>
                     </span>
                   ))}
                 </div>
-              </div>
-            )
-          ))}
-
-          {orgExclusions.length === 0 && (
-            <div className="bg-gray-50 rounded-xl p-8 text-center">
-              <p className="text-gray-400">除外条件は設定されていません</p>
-            </div>
-          )}
-
-          {/* 適用状況 */}
-          {orgExclusions.length > 0 && (
-            <div className="mt-6 p-4 bg-red-50 rounded-lg">
-              <p className="text-sm text-red-800">
-                <strong>現在の除外設定：</strong> {orgExclusions.length}件の条件で除外中
-              </p>
-            </div>
-          )}
+              )}
+            </section>
+          </main>
         </div>
       );
     }
 
-    // 左カラム（サイドバー）
-    function Sidebar({ activeItem, onSelectItem }) {
-      const [expandedItems, setExpandedItems] = useState(['company', 'media', 'form']);
-      const toggleExpand = (id) => setExpandedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-
-      return (
-        <div className="sidebar-fixed bg-white border-r border-gray-200 h-screen overflow-y-auto flex-shrink-0">
-          <div className="p-4 border-b border-gray-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center"><span className="text-white font-bold">S</span></div>
-              <div><h1 className="text-sm font-bold text-gray-800">斉藤光学株式会社</h1><p className="text-xs text-gray-500">マイクロスコープ</p></div>
-            </div>
-          </div>
-          <nav className="p-3">
-            {navigation.map(item => (
-              <div key={item.id} className="mb-1">
-                <button className={`w-full flex items-center px-3 py-2 rounded-lg text-left text-sm ${activeItem === item.id ? 'bg-primary-50 text-primary-600' : 'text-gray-700 hover:bg-gray-50'}`}
-                  onClick={() => { if (item.children) toggleExpand(item.id); onSelectItem(item.id); }}>
-                  <span className="mr-2">{item.icon}</span><span className="flex-1 font-medium">{item.label}</span>
-                  {item.children && <span className="text-gray-400 text-xs">{expandedItems.includes(item.id) ? '▼' : '▶'}</span>}
-                </button>
-                {item.children && expandedItems.includes(item.id) && (
-                  <div className="ml-7 mt-1 space-y-1">
-                    {item.children.map(child => (
-                      <button key={child.id} className={`w-full px-3 py-1.5 rounded text-left text-xs ${activeItem === child.id ? 'bg-primary-50 text-primary-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
-                        onClick={() => onSelectItem(child.id)}>{child.label}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </nav>
-        </div>
-      );
-    }
-
-    // 期間選択
-    function DateRangePicker({ dateRange, onDateRangeChange }) {
-      const quickOptions = [
-        { label: '7日', value: '7daysAgo' }, { label: '30日', value: '30daysAgo' },
-        { label: '90日', value: '90daysAgo' }, { label: '12ヶ月', value: '365daysAgo' }
-      ];
-
-      return (
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1">
-            {quickOptions.map(opt => (
-              <button key={opt.value}
-                className={`px-3 py-1.5 text-xs rounded shadow-sm border ${dateRange === opt.value ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                onClick={() => onDateRangeChange(opt.value)}>{opt.label}</button>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    // メインコンテンツ（ダッシュボード）
-    function DashboardContent({ dateRange, urlFilters, orgExclusions, allCompanies, setAllCompanies }) {
+    // ========== 個別アナリティクスダッシュボード ==========
+    function AnalyticsDashboard({ project, onBack, onEdit }) {
+      const [activeItem, setActiveItem] = useState('dashboard');
+      const [dateRange, setDateRange] = useState('30daysAgo');
+      const [companies, setCompanies] = useState([]);
       const [metrics, setMetrics] = useState(null);
       const [realtime, setRealtime] = useState(null);
       const [loading, setLoading] = useState(true);
-      const [error, setError] = useState(null);
+
+      const urlCategories = project.urlCategories || {};
+      const orgExclusions = project.orgExclusions || [];
+
+      // 現在選択中のURLを取得
+      const getActiveUrlFilter = () => {
+        if (activeItem === 'dashboard') return null;
+        if (activeItem.startsWith('url-')) {
+          const urlId = parseInt(activeItem.replace('url-', ''));
+          for (const catId of Object.keys(urlCategories)) {
+            const urlItem = urlCategories[catId]?.find(u => u.id === urlId);
+            if (urlItem) return urlItem.url;
+          }
+        }
+        return null;
+      };
+
+      const urlFilter = getActiveUrlFilter();
 
       const loadData = useCallback(async () => {
         setLoading(true);
-        setError(null);
         try {
-          // URLフィルターからAPIパラメータを構築
-          const includeUrls = urlFilters.filter(f => f.filterType === 'include');
           const apiParams = { type: 'companies', startDate: dateRange, endDate: 'today' };
-
-          // 含めるURLフィルターがある場合、最初の1つをAPIに送信（複数は後でクライアント側でフィルタリング）
-          if (includeUrls.length > 0) {
-            apiParams.url = includeUrls[0].url;
-          }
+          if (urlFilter) apiParams.url = urlFilter;
 
           const [overviewRes, companiesRes, realtimeRes] = await Promise.all([
             fetchGA4({ type: 'overview', startDate: dateRange, endDate: 'today' }),
@@ -793,34 +652,21 @@
             fetchGA4({ type: 'realtime' })
           ]);
           setMetrics(overviewRes.data);
-          setAllCompanies(companiesRes.data || []);
+          setCompanies(companiesRes.data || []);
           setRealtime(realtimeRes.data);
         } catch (err) {
           console.error('Data load error:', err);
-          setError('データの取得に失敗しました。モックデータを表示します。');
           setMetrics(dummyMetrics);
-          setAllCompanies([]);
+          setCompanies([]);
         } finally {
           setLoading(false);
         }
-      }, [dateRange, urlFilters, setAllCompanies]);
+      }, [dateRange, urlFilter]);
 
       useEffect(() => { loadData(); }, [loadData]);
 
-      // リアルタイム更新
-      useEffect(() => {
-        const interval = setInterval(async () => {
-          try {
-            const res = await fetchGA4({ type: 'realtime' });
-            setRealtime(res.data);
-          } catch (err) { /* ignore */ }
-        }, 30000);
-        return () => clearInterval(interval);
-      }, []);
-
-      // フィルター適用後の企業データ
-      const filteredCompanies = allCompanies.filter(company => {
-        // 組織除外フィルター適用
+      // 組織除外フィルター適用
+      const filteredCompanies = companies.filter(company => {
         for (const exc of orgExclusions) {
           if (exc.type === 'name' && company.name === exc.value) return false;
           if (exc.type === 'industry' && company.industry === exc.value) return false;
@@ -841,147 +687,244 @@
         .slice(0, 10)
         .map(([name, pv]) => ({ name, pv, percent: ((pv / totalSessions) * 100).toFixed(1) }));
 
-      // フィルター状況サマリー
-      const hasFilters = urlFilters.length > 0 || orgExclusions.length > 0;
+      // 現在のタイトル
+      const getTitle = () => {
+        if (activeItem === 'dashboard') return 'ダッシュボード';
+        if (activeItem.startsWith('url-')) {
+          const urlId = parseInt(activeItem.replace('url-', ''));
+          for (const catId of Object.keys(urlCategories)) {
+            const urlItem = urlCategories[catId]?.find(u => u.id === urlId);
+            if (urlItem) return urlItem.title;
+          }
+        }
+        const cat = URL_CATEGORIES.find(c => c.id === activeItem);
+        return cat?.label || '';
+      };
+
+      const dateOptions = [
+        { label: '7日', value: '7daysAgo' }, { label: '30日', value: '30daysAgo' },
+        { label: '90日', value: '90daysAgo' }, { label: '12ヶ月', value: '365daysAgo' }
+      ];
 
       return (
-        <div className="flex-1 p-5 overflow-y-auto">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-xl font-bold text-gray-800">ダッシュボード</h2>
-            {error && <div className="text-xs text-orange-600 bg-orange-50 px-3 py-1 rounded">{error}</div>}
-          </div>
-
-          {/* フィルター適用中バナー */}
-          {hasFilters && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-4 text-sm">
-                <span className="text-blue-700 font-medium">🔍 フィルター適用中</span>
-                {urlFilters.length > 0 && (
-                  <span className="text-blue-600">URL: {urlFilters.length}件</span>
-                )}
-                {orgExclusions.length > 0 && (
-                  <span className="text-blue-600">除外: {orgExclusions.length}件</span>
-                )}
+        <div className="flex min-h-screen">
+          {/* サイドバー */}
+          <div className="sidebar-fixed bg-white border-r border-gray-200 h-screen overflow-y-auto flex-shrink-0">
+            <div className="p-4 border-b border-gray-100">
+              <button onClick={onBack} className="text-xs text-gray-500 hover:text-gray-700 mb-2">← トップへ戻る</button>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold">{project.name.charAt(0)}</span>
+                </div>
+                <div>
+                  <h1 className="text-sm font-bold text-gray-800">{project.name}</h1>
+                  <p className="text-xs text-gray-500">/{project.slug}</p>
+                </div>
               </div>
-              <span className="text-xs text-blue-600">
-                {filteredCompanies.length} / {allCompanies.length} 件表示
-              </span>
             </div>
-          )}
 
-          {/* リアルタイムバナー */}
-          <RealtimeBanner data={realtime} loading={loading} />
+            <nav className="p-3">
+              {/* ダッシュボード */}
+              <button className={`w-full flex items-center px-3 py-2 rounded-lg text-left text-sm mb-1 ${activeItem === 'dashboard' ? 'bg-primary-50 text-primary-600' : 'text-gray-700 hover:bg-gray-50'}`}
+                onClick={() => setActiveItem('dashboard')}>
+                <span className="mr-2">📊</span><span className="font-medium">ダッシュボード</span>
+              </button>
 
-          {/* 主要指標カード */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-            <MetricCard title="PV" value={metrics?.pageViews || 0} change={12.5} isPercent={true} loading={loading} />
-            <MetricCard title="ユーザー数" value={metrics?.activeUsers || 0} change={8.3} isPercent={true} loading={loading} />
-            <MetricCard title="セッション数" value={metrics?.sessions || 0} change={10.2} isPercent={true} loading={loading} />
-            <MetricCard title="平均滞在時間" value={metrics?.avgSessionDuration ? Math.floor(metrics.avgSessionDuration / 60) + '分' + Math.floor(metrics.avgSessionDuration % 60) + '秒' : '-'} change={5.1} isPercent={true} loading={loading} />
+              {/* 設定編集 */}
+              <button onClick={onEdit}
+                className="w-full flex items-center px-3 py-2 rounded-lg text-left text-sm mb-3 text-gray-700 hover:bg-gray-50">
+                <span className="mr-2">⚙️</span><span className="font-medium">設定を編集</span>
+              </button>
+
+              <div className="border-t border-gray-100 pt-3 mb-2">
+                <p className="text-xs text-gray-400 px-3 mb-2">URLカテゴリ</p>
+              </div>
+
+              {/* URLカテゴリ */}
+              {URL_CATEGORIES.filter(c => c.id !== 'exclude-content').map(category => {
+                const urls = urlCategories[category.id] || [];
+                return (
+                  <div key={category.id} className="mb-1">
+                    <div className="px-3 py-2 text-sm text-gray-600 flex items-center gap-2">
+                      <span>{category.icon}</span>
+                      <span className="font-medium">{category.label}</span>
+                      {urls.length > 0 && <span className="text-xs text-gray-400">{urls.length}</span>}
+                    </div>
+                    {urls.length > 0 && (
+                      <div className="ml-7 space-y-1">
+                        {urls.map(item => (
+                          <button key={item.id}
+                            className={`w-full px-3 py-1.5 rounded text-left text-xs ${activeItem === `url-${item.id}` ? 'bg-primary-50 text-primary-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                            onClick={() => setActiveItem(`url-${item.id}`)}>
+                            {item.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
           </div>
 
-          {/* 推移グラフ */}
-          <div className="mb-5"><TrendChart data={dummyDailyData} /></div>
+          {/* メインコンテンツ */}
+          <div className="flex-1 flex flex-col min-w-0">
+            <header className="bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
+              <div className="text-gray-600 text-sm font-medium">
+                evort Analytics
+                <span className="text-xs text-green-600 ml-2">● LIVE</span>
+              </div>
+              <div className="flex gap-1">
+                {dateOptions.map(opt => (
+                  <button key={opt.value}
+                    className={`px-3 py-1.5 text-xs rounded border ${dateRange === opt.value ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                    onClick={() => setDateRange(opt.value)}>{opt.label}</button>
+                ))}
+              </div>
+            </header>
 
-          {/* 地域分布 + デバイス */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-            <RegionDistribution data={regions.length > 0 ? regions : dummyRegions} loading={loading} />
-            <DeviceChart data={dummyDevices} />
-          </div>
+            <div className="flex-1 p-5 overflow-y-auto">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">{getTitle()}</h2>
+                  {urlFilter && <p className="text-sm text-gray-500">フィルター: <code className="bg-gray-100 px-2 py-0.5 rounded">{urlFilter}</code></p>}
+                </div>
+              </div>
 
-          {/* 来場組織リスト */}
-          <div className="mb-5">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">来場組織（どこどこJP連携）</h3>
-            <OrganizationList companies={filteredCompanies} loading={loading} />
+              <RealtimeBanner data={realtime} loading={loading} />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+                <MetricCard title="PV" value={metrics?.pageViews || 0} change={12.5} isPercent={true} loading={loading} />
+                <MetricCard title="ユーザー数" value={metrics?.activeUsers || 0} change={8.3} isPercent={true} loading={loading} />
+                <MetricCard title="セッション数" value={metrics?.sessions || 0} change={10.2} isPercent={true} loading={loading} />
+                <MetricCard title="平均滞在時間" value={metrics?.avgSessionDuration ? Math.floor(metrics.avgSessionDuration / 60) + '分' + Math.floor(metrics.avgSessionDuration % 60) + '秒' : '-'} change={5.1} isPercent={true} loading={loading} />
+              </div>
+
+              <div className="mb-5"><TrendChart data={dummyDailyData} /></div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                <RegionDistribution data={regions.length > 0 ? regions : dummyRegions} loading={loading} />
+                <DeviceChart data={dummyDevices} />
+              </div>
+
+              <div className="mb-5">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">来場組織（どこどこJP連携）</h3>
+                <OrganizationList companies={filteredCompanies} loading={loading} />
+              </div>
+            </div>
           </div>
         </div>
       );
     }
 
-    // メインコンテンツルーター
-    function MainContent({ activeItem, dateRange, urlFilters, setUrlFilters, orgExclusions, setOrgExclusions }) {
-      const [allCompanies, setAllCompanies] = useState([]);
+    // ========== App ==========
+    function App() {
+      const [view, setView] = useState('top'); // 'top', 'create', 'edit', 'dashboard'
+      const [projects, setProjects] = useState(() => loadProjects());
+      const [currentProject, setCurrentProject] = useState(null);
 
-      // ダッシュボードページ
-      if (activeItem === 'dashboard') {
+      // URL routing
+      useEffect(() => {
+        const handleRoute = () => {
+          const path = window.location.pathname;
+          if (path === '/' || path === '') {
+            setView('top');
+            setCurrentProject(null);
+          } else {
+            const slug = path.replace('/', '');
+            const project = projects.find(p => p.slug === slug);
+            if (project) {
+              setCurrentProject(project);
+              setView('dashboard');
+            } else {
+              setView('top');
+            }
+          }
+        };
+        handleRoute();
+        window.addEventListener('popstate', handleRoute);
+        return () => window.removeEventListener('popstate', handleRoute);
+      }, [projects]);
+
+      const navigateTo = (path) => {
+        window.history.pushState({}, '', path);
+        const event = new PopStateEvent('popstate');
+        window.dispatchEvent(event);
+      };
+
+      const handleCreateNew = () => {
+        setCurrentProject(null);
+        setView('create');
+      };
+
+      const handleSelectProject = (project) => {
+        navigateTo(`/${project.slug}`);
+      };
+
+      const handleSaveProject = (projectData) => {
+        let updatedProjects;
+        if (projects.find(p => p.id === projectData.id)) {
+          updatedProjects = projects.map(p => p.id === projectData.id ? projectData : p);
+        } else {
+          updatedProjects = [...projects, projectData];
+        }
+        setProjects(updatedProjects);
+        saveProjects(updatedProjects);
+        setCurrentProject(projectData);
+        navigateTo(`/${projectData.slug}`);
+      };
+
+      const handleDeleteProject = (projectId) => {
+        if (!confirm('このアナリティクスを削除しますか？')) return;
+        const updatedProjects = projects.filter(p => p.id !== projectId);
+        setProjects(updatedProjects);
+        saveProjects(updatedProjects);
+      };
+
+      const handleBack = () => {
+        navigateTo('/');
+      };
+
+      const handleEdit = () => {
+        setView('edit');
+      };
+
+      const handleCancelEdit = () => {
+        if (currentProject) {
+          setView('dashboard');
+        } else {
+          setView('top');
+        }
+      };
+
+      // 画面表示
+      if (view === 'create' || view === 'edit') {
         return (
-          <DashboardContent
-            dateRange={dateRange}
-            urlFilters={urlFilters}
-            orgExclusions={orgExclusions}
-            allCompanies={allCompanies}
-            setAllCompanies={setAllCompanies}
+          <ProjectForm
+            project={view === 'edit' ? currentProject : null}
+            onSave={handleSaveProject}
+            onCancel={handleCancelEdit}
           />
         );
       }
 
-      // URLフィルター設定ページ
-      if (activeItem === 'url-filter') {
-        return <UrlFilterPage urlFilters={urlFilters} setUrlFilters={setUrlFilters} />;
+      if (view === 'dashboard' && currentProject) {
+        return (
+          <AnalyticsDashboard
+            project={currentProject}
+            onBack={handleBack}
+            onEdit={handleEdit}
+          />
+        );
       }
 
-      // 組織除外設定ページ
-      if (activeItem === 'org-filter') {
-        return <OrgFilterPage orgExclusions={orgExclusions} setOrgExclusions={setOrgExclusions} companies={allCompanies} />;
-      }
-
-      // その他のページ（プレースホルダー）
-      const getTitle = () => {
-        for (const nav of navigation) {
-          if (nav.id === activeItem) return nav.label;
-          if (nav.children) {
-            const child = nav.children.find(c => c.id === activeItem);
-            if (child) return child.label;
-          }
-        }
-        return '';
-      };
-
       return (
-        <div className="flex-1 p-5 overflow-y-auto">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-xl font-bold text-gray-800">{getTitle()}</h2>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-10 text-center">
-            <p className="text-gray-400">このページはまだ準備中です</p>
-          </div>
-        </div>
-      );
-    }
-
-    // App
-    function App() {
-      const [activeItem, setActiveItem] = useState('dashboard');
-      const [dateRange, setDateRange] = useState('30daysAgo');
-
-      // フィルター状態（ローカルストレージに保存可能）
-      const [urlFilters, setUrlFilters] = useState([]);
-      const [orgExclusions, setOrgExclusions] = useState([]);
-
-      return (
-        <div className="flex min-h-screen">
-          <Sidebar activeItem={activeItem} onSelectItem={setActiveItem} />
-          <div className="flex-1 flex flex-col min-w-0">
-            <header className="bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
-              <div className="text-gray-600 text-sm font-medium">
-                evort アナリティクス
-                <span className="text-xs text-green-600 ml-2">● LIVE</span>
-                {(urlFilters.length > 0 || orgExclusions.length > 0) && (
-                  <span className="text-xs text-blue-600 ml-2 bg-blue-50 px-2 py-0.5 rounded">フィルター適用中</span>
-                )}
-              </div>
-              <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
-            </header>
-            <MainContent
-              activeItem={activeItem}
-              dateRange={dateRange}
-              urlFilters={urlFilters}
-              setUrlFilters={setUrlFilters}
-              orgExclusions={orgExclusions}
-              setOrgExclusions={setOrgExclusions}
-            />
-          </div>
-        </div>
+        <TopPage
+          projects={projects}
+          onCreateNew={handleCreateNew}
+          onSelectProject={handleSelectProject}
+          onDeleteProject={handleDeleteProject}
+        />
       );
     }
 
