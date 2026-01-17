@@ -6,7 +6,7 @@
   <title>evort Analytics</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/reactdom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -744,16 +744,16 @@
           }
 
           // URLフィルターを構築（現在のactiveItemに基づく）
-          let urlFilter = targetUrls[0]?.url || null;
+          let urlFilter = null;
           let urlMatchType = 'prefix';
 
           if (activeFilter.type === 'all') {
             // ダッシュボード: 全登録URLのデータを取得（フィルターなし）
-            urlFilter = targetUrls[0]?.url || null;
+            urlFilter = null;
           } else if (activeFilter.type === 'category') {
             // カテゴリ: そのカテゴリ内の最初のURLをフィルターとして使用
             // 複数URLの場合は個別に取得して合算が必要だが、簡略化のためフィルターなし
-            urlFilter = targetUrls[0]?.url || null;
+            urlFilter = null;
           } else if (activeFilter.type === 'url') {
             // 親URL選択時: そのURL（前方一致で配下も含む）
             urlFilter = activeFilter.url;
