@@ -1,0 +1,11 @@
+{
+  "name": "evort-analytics-api",
+  "version": "1.0.0",
+  "description": "GA4 API backend for manufacturing media analytics",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@google-analytics/data": "^4.0.0"
+  }
+}
