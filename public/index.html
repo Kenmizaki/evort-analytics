@@ -744,16 +744,16 @@
           }
 
           // URLフィルターを構築（現在のactiveItemに基づく）
-          let urlFilter = null;
+          let urlFilter = targetUrls[0]?.url || null;
           let urlMatchType = 'prefix';
 
           if (activeFilter.type === 'all') {
             // ダッシュボード: 全登録URLのデータを取得（フィルターなし）
-            urlFilter = null;
+            urlFilter = targetUrls[0]?.url || null;
           } else if (activeFilter.type === 'category') {
             // カテゴリ: そのカテゴリ内の最初のURLをフィルターとして使用
             // 複数URLの場合は個別に取得して合算が必要だが、簡略化のためフィルターなし
-            urlFilter = null;
+            urlFilter = targetUrls[0]?.url || null;
           } else if (activeFilter.type === 'url') {
             // 親URL選択時: そのURL（前方一致で配下も含む）
             urlFilter = activeFilter.url;
