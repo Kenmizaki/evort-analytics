@@ -1,13 +1,13 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "api/*.js", "use": "@vercel/node" },
-    { "src": "public/**", "use": "@vercel/static" }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/js/(.*)", "dest": "/public/js/$1" },
-    { "src": "/(.*\\.[a-zA-Z0-9]+)$", "dest": "/public/$1" },
-    { "src": "/(.*)", "dest": "/public/index.html" }
-  ]
+    "version": 2,
+    "builds": [
+          { "src": "api/ga4-report.js", "use": "@vercel/node" },
+          { "src": "public/**", "use": "@vercel/static" }
+    ],
+    "routes": [
+          { "src": "/api/ga4-report", "dest": "/api/ga4-report.js" },
+          { "src": "/js/(.*)", "dest": "/public/js/$1" },
+          { "src": "/(.*\\.[a-zA-Z0-9]+)$", "dest": "/public/$1" },
+          { "src": "/(.*)", "dest": "/public/index.html" }
+    ]
 }
