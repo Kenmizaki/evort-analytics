@@ -6,7 +6,7 @@
   <title>evort Analytics</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/reactdom.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -744,41 +744,140 @@
           }
 
           // URLフィルターを構築（現在のactiveItemに基づく）
-          let urlFilter = null;
+          let urlsToFetch = []; // 複数URL取得用
+          let singleUrlFilter = null;
           let urlMatchType = 'prefix';
 
           if (activeFilter.type === 'all') {
-            // ダッシュボード: 全登録URLのデータを取得（フィルターなし）
-            urlFilter = null;
+            // ダッシュボード: 全登録URLのデータを個別に取得して合算
+            urlsToFetch = targetUrls.map(u => u.url);
           } else if (activeFilter.type === 'category') {
-            // カテゴリ: そのカテゴリ内の最初のURLをフィルターとして使用
-            // 複数URLの場合は個別に取得して合算が必要だが、簡略化のためフィルターなし
-            urlFilter = null;
+            // カテゴリ: そのカテゴリ内のURLを個別に取得して合算
+            urlsToFetch = targetUrls.filter(u => u.category === activeFilter.categoryId).map(u => u.url);
           } else if (activeFilter.type === 'url') {
             // 親URL選択時: そのURL（前方一致で配下も含む）
-            urlFilter = activeFilter.url;
+            singleUrlFilter = activeFilter.url;
             urlMatchType = 'prefix';
           } else if (activeFilter.type === 'subpage') {
             // 子ページ選択時: 完全一致
-            urlFilter = activeFilter.url;
+            singleUrlFilter = activeFilter.url;
             urlMatchType = 'exact';
           }
 
-          // GA4から直接メトリクス、日別推移、地域、デバイスデータを取得
-          const ga4Promises = [
-            // 1. overview-by-url: PV/セッション/ユーザー
-            fetchGA4({ type: 'overview-by-url', startDate: dateRange, endDate: 'today', url: urlFilter, urlMatchType })
-              .catch(() => ({ data: { pageViews: 0, sessions: 0, activeUsers: 0, avgSessionDuration: 0 } })),
-            // 2. daily-trend: 日別推移
-            fetchGA4({ type: 'daily-trend', startDate: dateRange, endDate: 'today', url: urlFilter, urlMatchType })
-              .catch(() => ({ data: [] })),
-            // 3. regions: 地域データ
-            fetchGA4({ type: 'regions', startDate: dateRange, endDate: 'today', url: urlFilter, urlMatchType })
-              .catch(() => ({ data: [] })),
-            // 4. devices: デバイスデータ
-            fetchGA4({ type: 'devices', startDate: dateRange, endDate: 'today', url: urlFilter, urlMatchType })
-              .catch(() => ({ data: [] })),
-          ];
+          // GA4データを取得（複数URLの場合は個別取得して合算）
+          let ga4Promises;
+          if (urlsToFetch.length > 0) {
+            // 各URLごとにGA4データを取得して合算
+            const overviewPromises = urlsToFetch.map(url =>
+              fetchGA4({ type: 'overview-by-url', startDate: dateRange, endDate: 'today', url, urlMatchType: 'prefix' })
+                .catch(() => ({ data: { pageViews: 0, sessions: 0, activeUsers: 0, avgSessionDuration: 0 } }))
+            );
+            const trendPromises = urlsToFetch.map(url =>
+              fetchGA4({ type: 'daily-trend', startDate: dateRange, endDate: 'today', url, urlMatchType: 'prefix' })
+                .catch(() => ({ data: [] }))
+            );
+            const regionPromises = urlsToFetch.map(url =>
+              fetchGA4({ type: 'regions', startDate: dateRange, endDate: 'today', url, urlMatchType: 'prefix' })
+                .catch(() => ({ data: [] }))
+            );
+            const devicePromises = urlsToFetch.map(url =>
+              fetchGA4({ type: 'devices', startDate: dateRange, endDate: 'today', url, urlMatchType: 'prefix' })
+                .catch(() => ({ data: [] }))
+            );
+
+            const [overviewResults, trendResults, regionResults, deviceResults] = await Promise.all([
+              Promise.all(overviewPromises),
+              Promise.all(trendPromises),
+              Promise.all(regionPromises),
+              Promise.all(devicePromises),
+            ]);
+
+            // Overview合算
+            const aggregatedOverview = overviewResults.reduce((acc, res) => {
+              const d = res.data || {};
+              acc.pageViews += d.pageViews || 0;
+              acc.sessions += d.sessions || 0;
+              acc.activeUsers += d.activeUsers || 0;
+              acc.avgSessionDuration += d.avgSessionDuration || 0;
+              return acc;
+            }, { pageViews: 0, sessions: 0, activeUsers: 0, avgSessionDuration: 0 });
+            if (overviewResults.length > 0) {
+              aggregatedOverview.avgSessionDuration /= overviewResults.length;
+            }
+
+            // Trend合算（日付でマージ）
+            const trendMap = new Map();
+            trendResults.forEach(res => {
+              (res.data || []).forEach(d => {
+                if (trendMap.has(d.date)) {
+                  const existing = trendMap.get(d.date);
+                  existing.pv += d.pv || 0;
+                  existing.sessions += d.sessions || 0;
+                  existing.users += d.users || 0;
+                } else {
+                  trendMap.set(d.date, { date: d.date, pv: d.pv || 0, sessions: d.sessions || 0, users: d.users || 0 });
+                }
+              });
+            });
+            const aggregatedTrend = Array.from(trendMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+            // Region合算
+            const regionMap = new Map();
+            regionResults.forEach(res => {
+              (res.data || []).forEach(r => {
+                if (regionMap.has(r.name)) {
+                  const existing = regionMap.get(r.name);
+                  existing.sessions += r.sessions || 0;
+                  existing.users += r.users || 0;
+                  existing.pageViews += r.pageViews || 0;
+                } else {
+                  regionMap.set(r.name, { ...r });
+                }
+              });
+            });
+            const aggregatedRegions = Array.from(regionMap.values())
+              .sort((a, b) => b.sessions - a.sessions)
+              .slice(0, 20);
+            const totalRegionSessions = aggregatedRegions.reduce((sum, r) => sum + r.sessions, 0) || 1;
+            aggregatedRegions.forEach(r => { r.percent = ((r.sessions / totalRegionSessions) * 100).toFixed(1); });
+
+            // Device合算
+            const deviceMap = new Map();
+            deviceResults.forEach(res => {
+              (res.data || []).forEach(d => {
+                if (deviceMap.has(d.name)) {
+                  const existing = deviceMap.get(d.name);
+                  existing.sessions += d.sessions || 0;
+                } else {
+                  deviceMap.set(d.name, { ...d, sessions: d.sessions || 0 });
+                }
+              });
+            });
+            const totalDeviceSessions = Array.from(deviceMap.values()).reduce((sum, d) => sum + d.sessions, 0) || 1;
+            const aggregatedDevices = Array.from(deviceMap.values()).map(d => ({
+              ...d,
+              value: Math.round((d.sessions / totalDeviceSessions) * 100),
+            }));
+
+            ga4Promises = [
+              Promise.resolve({ data: aggregatedOverview }),
+              Promise.resolve({ data: aggregatedTrend }),
+              Promise.resolve({ data: aggregatedRegions }),
+              Promise.resolve({ data: aggregatedDevices }),
+            ];
+          } else {
+            // 単一URL取得
+            ga4Promises = [
+              fetchGA4({ type: 'overview-by-url', startDate: dateRange, endDate: 'today', url: singleUrlFilter, urlMatchType })
+                .catch(() => ({ data: { pageViews: 0, sessions: 0, activeUsers: 0, avgSessionDuration: 0 } })),
+              fetchGA4({ type: 'daily-trend', startDate: dateRange, endDate: 'today', url: singleUrlFilter, urlMatchType })
+                .catch(() => ({ data: [] })),
+              fetchGA4({ type: 'regions', startDate: dateRange, endDate: 'today', url: singleUrlFilter, urlMatchType })
+                .catch(() => ({ data: [] })),
+              fetchGA4({ type: 'devices', startDate: dateRange, endDate: 'today', url: singleUrlFilter, urlMatchType })
+                .catch(() => ({ data: [] })),
+            ];
+          }
 
           // 企業データ（どこどこJP）は引き続き取得
           // 各URLごとに企業データを取得（前方一致=カテゴリ用）
