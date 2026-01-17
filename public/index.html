@@ -127,13 +127,41 @@
     }
 
     // 推移グラフ（GA4から取得した日別データを使用）
-    function TrendChart({ data, loading }) {
+    function TrendChart({ data, loading, dateRange }) {
       const chartRef = useRef(null);
       const chartInstance = useRef(null);
 
+      // 月別に集約する関数
+      const aggregateByMonth = (dailyData) => {
+        const monthMap = new Map();
+        dailyData.forEach(d => {
+          const monthKey = d.date.substring(0, 7); // "01/15" → "01"または"2024-01" → "2024-01"
+          // GA4の日付形式が"YYYYMMDD"の場合
+          const dateStr = d.date.replace(/\//g, '');
+          const month = dateStr.length === 8 ? dateStr.substring(0, 6) : d.date.substring(0, 7);
+          if (!monthMap.has(month)) {
+            monthMap.set(month, { pv: 0, sessions: 0 });
+          }
+          const m = monthMap.get(month);
+          m.pv += d.pv || 0;
+          m.sessions += d.sessions || 0;
+        });
+        return Array.from(monthMap.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([month, values]) => ({
+            date: month.length === 6 ? `${month.substring(4, 6)}月` : month,
+            pv: values.pv,
+            sessions: values.sessions
+          }));
+      };
+
+      // 90日以上（365daysAgoまたは90daysAgo）の場合は月別表示
+      const shouldAggregateByMonth = dateRange === '365daysAgo' || dateRange === '90daysAgo';
+      const chartData = shouldAggregateByMonth && data?.length > 60 ? aggregateByMonth(data) : data;
+
       useEffect(() => {
         if (chartInstance.current) chartInstance.current.destroy();
-        if (!data || data.length === 0) return;
+        if (!chartData || chartData.length === 0) return;
         if (!chartRef.current) return;
 
         const ctx = chartRef.current.getContext('2d');
@@ -145,14 +173,14 @@
         chartInstance.current = new Chart(ctx, {
           type: 'line',
           data: {
-            labels: data.map(d => d.date),
+            labels: chartData.map(d => d.date),
             datasets: [{
-              label: 'PV', data: data.map(d => d.pv), fill: true, backgroundColor: pvGradient,
-              borderColor: 'rgba(99, 102, 241, 0.8)', borderWidth: 2, tension: 0.4, pointRadius: 0,
+              label: 'PV', data: chartData.map(d => d.pv), fill: true, backgroundColor: pvGradient,
+              borderColor: 'rgba(99, 102, 241, 0.8)', borderWidth: 2, tension: 0.4, pointRadius: shouldAggregateByMonth ? 4 : 0,
               yAxisID: 'y', order: 2
             }, {
-              label: 'セッション', data: data.map(d => d.sessions), fill: false, borderColor: '#f97316',
-              borderWidth: 2, tension: 0.3, pointRadius: 3, yAxisID: 'y1', order: 1
+              label: 'セッション', data: chartData.map(d => d.sessions), fill: false, borderColor: '#f97316',
+              borderWidth: 2, tension: 0.3, pointRadius: shouldAggregateByMonth ? 4 : 3, yAxisID: 'y1', order: 1
             }]
           },
           options: {
@@ -166,7 +194,7 @@
           }
         });
         return () => { if (chartInstance.current) chartInstance.current.destroy(); };
-      }, [data, loading]);
+      }, [chartData, loading, dateRange]);
 
       if (loading) {
         return (
@@ -280,6 +308,8 @@
     function OrganizationList({ companies, loading }) {
       const [sortConfig, setSortConfig] = useState({ key: 'sessions', direction: 'desc' });
       const [searchTerm, setSearchTerm] = useState('');
+      const [displayCount, setDisplayCount] = useState(50);
+      const displayOptions = [50, 100, 250, 500, 1000];
 
       const handleSort = (key) => {
         setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
@@ -295,7 +325,8 @@
 
       const columns = [
         { key: 'name', label: '組織名' }, { key: 'prefecture', label: '都道府県' },
-        { key: 'industry', label: '業種' }, { key: 'sessions', label: 'セッション' }, { key: 'pageViews', label: 'PV' }
+        { key: 'industry', label: '業種' }, { key: 'capitalStock', label: '資本金' }, { key: 'sales', label: '売上高' },
+        { key: 'sessions', label: 'セッション' }, { key: 'pageViews', label: 'PV' }
       ];
 
       if (loading) return (
@@ -309,7 +340,13 @@
           <div className="p-4 border-b border-gray-100 flex items-center justify-between">
             <input type="text" placeholder="企業名で検索..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
               className="px-3 py-1.5 text-xs border rounded-lg w-48 focus:ring-2 focus:ring-primary-500" />
-            <div className="text-xs text-gray-500">{sortedData.length} 件</div>
+            <div className="flex items-center gap-3">
+              <select value={displayCount} onChange={e => setDisplayCount(Number(e.target.value))}
+                className="px-2 py-1 text-xs border rounded-lg focus:ring-2 focus:ring-primary-500">
+                {displayOptions.map(n => <option key={n} value={n}>{n}件表示</option>)}
+              </select>
+              <div className="text-xs text-gray-500">{sortedData.length} 件中</div>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -323,11 +360,13 @@
                 </tr>
               </thead>
               <tbody>
-                {sortedData.slice(0, 30).map((row, index) => (
+                {sortedData.slice(0, displayCount).map((row, index) => (
                   <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-primary-50`}>
                     <td className="px-3 py-1.5 font-medium">{row.name || '不明'}</td>
                     <td className="px-3 py-1.5">{row.prefecture || '-'}</td>
                     <td className="px-3 py-1.5">{row.industry || '-'}</td>
+                    <td className="px-3 py-1.5">{row.capitalStock || '-'}</td>
+                    <td className="px-3 py-1.5">{row.sales || '-'}</td>
                     <td className="px-3 py-1.5 text-right font-medium">{row.sessions?.toLocaleString() || 0}</td>
                     <td className="px-3 py-1.5 text-right">{row.pageViews?.toLocaleString() || 0}</td>
                   </tr>
@@ -685,6 +724,18 @@
         return urlCategories['exclude-content'] || [];
       };
 
+      // デフォルト除外パターン（/previewを含むURL）
+      const DEFAULT_EXCLUDE_PATTERNS = ['/preview'];
+
+      // URLが除外対象かチェック
+      const isExcludedUrl = (path) => {
+        // デフォルト除外パターンのチェック
+        if (DEFAULT_EXCLUDE_PATTERNS.some(pattern => path.includes(pattern))) return true;
+        // ユーザー設定の除外URLチェック
+        const excludeUrls = getExcludeUrls();
+        return excludeUrls.some(ex => path.startsWith(ex.url) || path === ex.url);
+      };
+
       // 現在選択中のフィルター情報を取得
       const getActiveFilter = () => {
         if (activeItem === 'dashboard') {
@@ -927,7 +978,7 @@
             subpagesObj[parentUrl] = pages.filter(p => {
               if (p.path === parentUrl) return false;
               if (!p.path.startsWith(parentUrl)) return false;
-              if (p.path.includes('/preview')) return false;
+              if (isExcludedUrl(p.path)) return false;
               if (seenPaths.has(p.path)) return false;
               seenPaths.add(p.path);
               const relativePath = p.path.slice(parentUrl.length);
@@ -1112,6 +1163,18 @@
         return parts[parts.length - 1] || path;
       };
 
+      // ページタイトル末尾トリム（「| サイト名」などを除去）
+      const trimPageTitle = (title) => {
+        if (!title) return '';
+        // パイプ区切りの末尾を除去（例: "製品紹介 | evort エボルト" → "製品紹介"）
+        const pipeIndex = title.lastIndexOf(' | ');
+        if (pipeIndex > 0) return title.substring(0, pipeIndex).trim();
+        // ハイフン区切りの末尾を除去（例: "製品紹介 - evort エボルト" → "製品紹介"）
+        const dashIndex = title.lastIndexOf(' - ');
+        if (dashIndex > 0) return title.substring(0, dashIndex).trim();
+        return title;
+      };
+
       const dateOptions = [
         { label: '7日', value: '7daysAgo' }, { label: '30日', value: '30daysAgo' },
         { label: '90日', value: '90daysAgo' }, { label: '12ヶ月', value: '365daysAgo' }
@@ -1206,9 +1269,9 @@
                                         key={idx}
                                         className={`w-full px-2 py-1 rounded text-left text-xs truncate ${isSubpageActive ? 'bg-primary-100 text-primary-700 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
                                         onClick={() => setActiveItem(subpageKey)}
-                                        title={subpage.title}
+                                        title={trimPageTitle(subpage.title)}
                                       >
-                                        {getPathEnd(subpage.path)}
+                                        {trimPageTitle(subpage.title) || getPathEnd(subpage.path)}
                                       </button>
                                     );
                                   })}
@@ -1287,7 +1350,7 @@
                     <MetricCard title="来場企業数（どこどこJP）" value={filteredCompanies.length} loading={loading} />
                   </div>
 
-                  <div className="mb-5"><TrendChart data={dailyTrendData} loading={loading} /></div>
+                  <div className="mb-5"><TrendChart data={dailyTrendData} loading={loading} dateRange={dateRange} /></div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                     <RegionDistribution data={regionData} loading={loading} />
