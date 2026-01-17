@@ -378,6 +378,8 @@ async function getCompaniesReport(startDate, endDate, filters = {}) {
       { name: 'customUser:pref' },           // 都道府県
       { name: 'customUser:industrialCategoryL' }, // 業種大分類
       { name: 'customUser:employees' },      // 従業員数
+      { name: 'customUser:capitalStock' },   // 資本金
+      { name: 'customUser:sales' },          // 売上高
     ],
     metrics: [
       { name: 'activeUsers' },
@@ -407,6 +409,8 @@ async function getCompaniesReport(startDate, endDate, filters = {}) {
     prefecture: row.dimensionValues[1]?.value || '',
     industry: row.dimensionValues[2]?.value || '',
     employees: row.dimensionValues[3]?.value || '',
+    capitalStock: row.dimensionValues[4]?.value || '',
+    sales: row.dimensionValues[5]?.value || '',
     activeUsers: parseInt(row.metricValues[0]?.value || 0),
     sessions: parseInt(row.metricValues[1]?.value || 0),
     pageViews: parseInt(row.metricValues[2]?.value || 0),
