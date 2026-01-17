@@ -134,6 +134,7 @@
       useEffect(() => {
         if (chartInstance.current) chartInstance.current.destroy();
         if (!data || data.length === 0) return;
+        if (!chartRef.current) return;
 
         const ctx = chartRef.current.getContext('2d');
         const pvGradient = ctx.createLinearGradient(0, 0, 0, 220);
@@ -165,7 +166,7 @@
           }
         });
         return () => { if (chartInstance.current) chartInstance.current.destroy(); };
-      }, [data]);
+      }, [data, loading]);
 
       if (loading) {
         return (
@@ -226,6 +227,7 @@
       useEffect(() => {
         if (chartInstance.current) chartInstance.current.destroy();
         if (!data || data.length === 0) return;
+        if (!chartRef.current) return;
 
         const ctx = chartRef.current.getContext('2d');
         chartInstance.current = new Chart(ctx, {
@@ -234,7 +236,7 @@
           options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { display: false } } }
         });
         return () => { if (chartInstance.current) chartInstance.current.destroy(); };
-      }, [data]);
+      }, [data, loading]);
 
       if (loading) {
         return (
